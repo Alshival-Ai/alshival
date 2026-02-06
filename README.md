@@ -5,10 +5,17 @@ Minimal client for sending logs to Alshival.
 ## Install
 
 ```bash
-pip install alshival
+pip install git+https://github.com/Alshival-Ai/alshival.git@main
 ```
 
 ## Usage
+
+To authenticate, create an API key in your Alshival account.
+
+- Sign in to Alshival.
+- Open `Account Settings`.
+- In the `API Keys` section, create a key (requires an active DevTools subscription).
+- Store the key and your username in environment variables.
 
 ```python
 import os
@@ -24,14 +31,3 @@ try:
 except Exception as e:
     alshival.log.error(f"error: {e}")
 ```
-
-## Environment variables
-
-- `ALSHIVAL_USERNAME`
-- `ALSHIVAL_API_KEY`
-- `ALSHIVAL_BASE_URL` (optional, default: `https://alshival.ai`)
-
-## Notes
-
-- API keys are sent to `/api/logs/ingest/`.
-- Errors are swallowed by default to avoid breaking client apps.
