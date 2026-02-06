@@ -22,7 +22,7 @@ The SDK reads these environment variables automatically:
 - `ALSHIVAL_USERNAME`
 - `ALSHIVAL_API_KEY`
 - `ALSHIVAL_BASE_URL` (optional, defaults to `https://alshival.ai`)
-- `ALSHIVAL_RESOURCE_ID` (optional, attach logs to a resource)
+- `ALSHIVAL_RESOURCE_ID` (optional, UUID shown on Resource Details)
 
 With those set, you can start logging immediately:
 
@@ -68,5 +68,5 @@ Attach logs to a resource ID:
 ```python
 import alshival
 
-alshival.log.error("db connection failed", resource_id="user-11/42")
+alshival.log.error("db connection failed", resource_id="82d7e623-b8ad-4ee6-a047-75bbe587486f")
 ```
