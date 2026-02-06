@@ -17,7 +17,21 @@ To authenticate, create an API key in your Alshival account.
 - In the `API Keys` section, create a key (requires an active DevTools subscription).
 - Store the key and your username in environment variables.
 
-Example configuration:
+The SDK reads these environment variables automatically:
+
+- `ALSHIVAL_USERNAME`
+- `ALSHIVAL_API_KEY`
+- `ALSHIVAL_BASE_URL` (optional, defaults to `https://alshival.ai`)
+
+With those set, you can start logging immediately:
+
+```python
+import alshival
+
+alshival.log.info("service started")
+```
+
+If you want to override values at runtime, call `configure`:
 
 ```python
 import os
@@ -34,25 +48,10 @@ alshival.configure(
 
 The logger sends events to Alshival Cloud Logs over HTTPS.
 
-Steps:
-
-1. Create an API key in `Account Settings` (requires DevTools).
-2. Set environment variables:
-   - `ALSHIVAL_USERNAME`
-   - `ALSHIVAL_API_KEY`
-   - `ALSHIVAL_BASE_URL` (optional, defaults to `https://alshival.ai`)
-3. Initialize the SDK and log events.
-
 Example:
 
 ```python
-import os
 import alshival
-
-alshival.configure(
-    username=os.getenv("ALSHIVAL_USERNAME"),
-    api_key=os.getenv("ALSHIVAL_API_KEY"),
-)
 
 alshival.log.info("service started")
 
@@ -63,13 +62,7 @@ except Exception:
 ```
 
 ```python
-import os
 import alshival
-
-alshival.configure(
-    username=os.getenv("ALSHIVAL_USERNAME"),
-    api_key=os.getenv("ALSHIVAL_API_KEY"),
-)
 
 try:
     1 / 0
