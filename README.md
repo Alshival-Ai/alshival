@@ -17,6 +17,19 @@ To authenticate, create an API key in your Alshival account.
 - In the `API Keys` section, create a key (requires an active DevTools subscription).
 - Store the key and your username in environment variables.
 
+Example configuration:
+
+```python
+import os
+import alshival
+
+alshival.configure(
+    username=os.getenv("ALSHIVAL_USERNAME"),
+    api_key=os.getenv("ALSHIVAL_API_KEY"),
+    base_url=os.getenv("ALSHIVAL_BASE_URL", "https://alshival.ai"),
+)
+```
+
 ## Cloud Logs
 
 The logger sends events to Alshival Cloud Logs over HTTPS.
