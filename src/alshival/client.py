@@ -10,6 +10,7 @@ class ClientConfig:
     username: Optional[str] = None
     api_key: Optional[str] = None
     base_url: str = "https://alshival.ai"
+    resource_id: Optional[str] = None
     enabled: bool = True
     timeout_seconds: int = 5
 
@@ -18,6 +19,7 @@ _config = ClientConfig(
     username=os.getenv("ALSHIVAL_USERNAME"),
     api_key=os.getenv("ALSHIVAL_API_KEY"),
     base_url=os.getenv("ALSHIVAL_BASE_URL", "https://alshival.ai"),
+    resource_id=os.getenv("ALSHIVAL_RESOURCE_ID"),
 )
 
 
@@ -26,6 +28,7 @@ def configure(
     username: Optional[str] = None,
     api_key: Optional[str] = None,
     base_url: Optional[str] = None,
+    resource_id: Optional[str] = None,
     enabled: Optional[bool] = None,
     timeout_seconds: Optional[int] = None,
 ) -> None:
@@ -35,6 +38,8 @@ def configure(
         _config.api_key = api_key
     if base_url is not None:
         _config.base_url = base_url.rstrip("/")
+    if resource_id is not None:
+        _config.resource_id = resource_id
     if enabled is not None:
         _config.enabled = enabled
     if timeout_seconds is not None:
