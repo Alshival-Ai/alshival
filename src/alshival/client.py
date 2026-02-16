@@ -13,6 +13,7 @@ class ClientConfig:
     resource_id: Optional[str] = None
     enabled: bool = True
     timeout_seconds: int = 5
+    verify_ssl: bool = True
 
 
 _config = ClientConfig(
@@ -31,6 +32,7 @@ def configure(
     resource_id: Optional[str] = None,
     enabled: Optional[bool] = None,
     timeout_seconds: Optional[int] = None,
+    verify_ssl: Optional[bool] = None,
 ) -> None:
     if username is not None:
         _config.username = username
@@ -44,6 +46,8 @@ def configure(
         _config.enabled = enabled
     if timeout_seconds is not None:
         _config.timeout_seconds = timeout_seconds
+    if verify_ssl is not None:
+        _config.verify_ssl = verify_ssl
 
 
 def set_enabled(enabled: bool) -> None:

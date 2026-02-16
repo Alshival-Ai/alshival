@@ -1,6 +1,6 @@
 # Alshival SDK (Python)
 
-Minimal client for sending logs to Alshival.
+Python logging SDK for sending structured logs to Alshival DevTools resources.
 
 ## Install
 
@@ -46,27 +46,80 @@ alshival.configure(
 )
 ```
 
-## Cloud Logs
+## Direct SDK Logging
 
-The logger sends events to Alshival Cloud Logs over HTTPS.
+The logger sends events to your resource endpoint:
 
-Example:
+- `https://alshival.ai/DevTools/u/<username>/resources/<resource_uuid>/logs/`
+
+Basic usage:
 
 ```python
 import alshival
 
 alshival.log.info("service started")
+alshival.log.warning("cache miss", extra={"key": "user:42"})
+alshival.log.error("db connection failed")
+```
 
+Attach logs to a specific resource per call:
+
+```python
+alshival.log.info("one-off event", resource_id="82d7e623-b8ad-4ee6-a047-75bbe587486f")
+```
+
+Exception logging:
+
+```python
 try:
     1 / 0
 except Exception:
     alshival.log.exception("unexpected error")
 ```
 
-Attach logs to a resource ID:
+## Python `logging` Integration
+
+Use the SDK as a normal `logging` handler:
 
 ```python
+import logging
 import alshival
 
-alshival.log.error("db connection failed", resource_id="82d7e623-b8ad-4ee6-a047-75bbe587486f")
+alshival.configure(
+    username="samuel",
+    api_key="your_api_key",
+    resource_id="82d7e623-b8ad-4ee6-a047-75bbe587486f",
+)
+
+logger = alshival.get_logger("my-service", level=logging.INFO)
+logger.info("service online")
+logger.error("request failed", extra={"request_id": "abc123"})
 ```
+
+Attach to an existing logger:
+
+```python
+import logging
+import alshival
+
+app_logger = logging.getLogger("app")
+alshival.attach(app_logger, level=logging.DEBUG)
+```
+
+Or use a handler directly:
+
+```python
+import logging
+import alshival
+
+h = alshival.handler(level=logging.INFO)
+root = logging.getLogger()
+root.addHandler(h)
+```
+
+## Notes
+
+- The SDK is fail-safe by design. Network errors never crash your app.
+- If `username`, `api_key`, or `resource_id` is missing, logs are skipped.
+- API key can be passed via `ALSHIVAL_API_KEY` or `alshival.configure(...)`.
+- TLS verification is on by default (`verify_ssl=True` in `configure`).
