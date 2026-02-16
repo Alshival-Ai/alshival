@@ -8,6 +8,17 @@ Python logging SDK for sending structured logs to Alshival DevTools resources.
 pip install git+https://github.com/Alshival-Ai/alshival.git@main
 ```
 
+## Development
+
+For local development:
+
+```bash
+python -m pip install -e .
+```
+
+Note: if your project has another top-level module/package named `alshival`, Python may import the wrong one. Rename the
+conflicting package or adjust your environment so this SDK is the one being imported.
+
 ## Usage
 
 To authenticate, create an API key in your Alshival account.
@@ -23,6 +34,8 @@ The SDK reads these environment variables automatically:
 - `ALSHIVAL_API_KEY`
 - `ALSHIVAL_BASE_URL` (optional, defaults to `https://alshival.ai`)
 - `ALSHIVAL_RESOURCE_ID` (optional, UUID shown on Resource Details)
+- `ALSHIVAL_CLOUD_LEVEL` (optional, defaults to `INFO`; minimum level forwarded to Alshival Cloud Logs)
+- `ALSHIVAL_DEBUG` (optional, `true/false`; prints SDK transport diagnostics to stderr)
 
 With those set, you can start logging immediately:
 
@@ -32,18 +45,32 @@ import alshival
 alshival.log.info("service started")
 ```
 
+### Cloud Level vs Local Logging
+
+`ALSHIVAL_CLOUD_LEVEL` (or `configure(cloud_level=...)`) controls what gets forwarded to Alshival Cloud Logs.
+
+It does not prevent your logs from being emitted locally via Python's `logging` system. If you want local output,
+configure `logging` normally (for example with `logging.basicConfig(...)`).
+
 If you want to override values at runtime, call `configure`:
 
 ```python
 import os
 import alshival
+import logging
+
+logging.basicConfig(level=logging.INFO)
 
 alshival.configure(
     username=os.getenv("ALSHIVAL_USERNAME"),
     api_key=os.getenv("ALSHIVAL_API_KEY"),
     base_url=os.getenv("ALSHIVAL_BASE_URL", "https://alshival.ai"),
     resource_id=os.getenv("ALSHIVAL_RESOURCE_ID"),
+    cloud_level=logging.ERROR,  # only forward ERROR+ to Alshival Cloud Logs
 )
+
+alshival.log.info("prints locally; not sent to cloud")
+alshival.log.error("prints locally; sent to cloud")
 ```
 
 ## Direct SDK Logging

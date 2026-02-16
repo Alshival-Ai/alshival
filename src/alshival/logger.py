@@ -5,7 +5,7 @@ import importlib.metadata
 import logging
 import threading
 import traceback
-from typing import Any, Mapping, Optional, Union
+from typing import Any, Mapping, Optional
 from urllib.parse import quote
 
 import requests
@@ -39,7 +39,7 @@ _RESERVED_RECORD_FIELDS = {
 
 
 def _utc_now_iso() -> str:
-    return dt.datetime.utcnow().replace(tzinfo=dt.timezone.utc).isoformat()
+    return dt.datetime.now(dt.timezone.utc).isoformat()
 
 
 def _safe_value(value: Any) -> Any:
@@ -56,19 +56,92 @@ def _sdk_version() -> str:
     try:
         return importlib.metadata.version("alshival")
     except importlib.metadata.PackageNotFoundError:
-        return "0.2.0"
+        # Avoid lying about the version when running from a source tree.
+        return "unknown"
 
 
-class AlshivalLogHandler(logging.Handler):
-    """A stdlib logging handler that forwards records to Alshival Cloud Logs."""
+def _debug(msg: str) -> None:
+    cfg = get_config()
+    if not cfg.debug:
+        return
+    try:
+        import sys
 
-    def __init__(self, logger_client: "AlshivalLogger", resource_id: Optional[str] = None):
+        sys.stderr.write(f"[alshival] {msg}\n")
+    except Exception:
+        return
+
+
+class CloudLogHandler(logging.Handler):
+    """Stdlib logging handler that forwards records to Alshival Cloud Logs.
+
+    Records are forwarded only when record.levelno >= configured cloud level.
+    Calls never raise (fail-safe telemetry).
+    """
+
+    def __init__(
+        self,
+        *,
+        resource_id: Optional[str] = None,
+        cloud_level: Optional[int] = None,
+    ) -> None:
         super().__init__()
-        self._logger_client = logger_client
         self.resource_id = resource_id
+        self.cloud_level = cloud_level
+        self._local = threading.local()
+
+    def _resource_endpoint(self, username: str, resource_id: str) -> str:
+        cfg = get_config()
+        safe_user = quote(username.strip(), safe="")
+        safe_resource = quote(resource_id.strip(), safe="")
+        return f"{cfg.base_url.rstrip('/')}/DevTools/u/{safe_user}/resources/{safe_resource}/logs/"
+
+    def _session(self) -> requests.Session:
+        # requests.Session is not documented as thread-safe; keep one per thread.
+        session = getattr(self._local, "session", None)
+        if session is None:
+            session = requests.Session()
+            self._local.session = session
+        return session
+
+    def _should_forward(self, record: logging.LogRecord) -> bool:
+        cfg = get_config()
+        if not cfg.enabled:
+            return False
+        min_level = self.cloud_level if self.cloud_level is not None else cfg.cloud_level
+        if record.levelno < min_level:
+            return False
+        if not cfg.username or not cfg.api_key:
+            return False
+        return True
+
+    def _resolved_resource_id(self, record: logging.LogRecord) -> str:
+        cfg = get_config()
+        # Prefer explicit override passed via the handler, then record extra, then global config.
+        candidates = [
+            self.resource_id,
+            getattr(record, "alshival_resource_id", None),
+            cfg.resource_id,
+        ]
+        for value in candidates:
+            if value and str(value).strip():
+                return str(value).strip()
+        return ""
 
     def emit(self, record: logging.LogRecord) -> None:
+        if getattr(self._local, "in_emit", False):
+            return
+        self._local.in_emit = True
         try:
+            if not self._should_forward(record):
+                return
+
+            cfg = get_config()
+            resolved_resource = self._resolved_resource_id(record)
+            if not resolved_resource:
+                _debug("skipping cloud log: missing resource_id (set ALSHIVAL_RESOURCE_ID or pass resource_id)")
+                return
+
             message = record.getMessage()
             details: dict[str, Any] = {
                 "logger": record.name,
@@ -77,6 +150,7 @@ class AlshivalLogHandler(logging.Handler):
                 "line": record.lineno,
                 "path": record.pathname,
             }
+
             extra_fields = {
                 key: _safe_value(value)
                 for key, value in record.__dict__.items()
@@ -84,45 +158,79 @@ class AlshivalLogHandler(logging.Handler):
             }
             if extra_fields:
                 details["extra"] = extra_fields
+
             if record.exc_info:
                 details["exception"] = "".join(traceback.format_exception(*record.exc_info))
             if record.stack_info:
                 details["stack_info"] = record.stack_info
-            self._logger_client._send(  # noqa: SLF001 - intentionally using shared transport
-                level=record.levelname.lower(),
-                message=message,
-                extra=details,
-                resource_id=self.resource_id,
-                logger_name=record.name,
-            )
+
+            payload: dict[str, Any] = {
+                "resource_id": resolved_resource,
+                "sdk": "alshival-python",
+                "sdk_version": _sdk_version(),
+                "logs": [
+                    {
+                        "level": record.levelname.lower(),
+                        "message": message,
+                        "logger": record.name,
+                        "ts": _utc_now_iso(),
+                        "extra": details,
+                    }
+                ],
+            }
+
+            endpoint = self._resource_endpoint(cfg.username or "", resolved_resource)
+            try:
+                resp = self._session().post(
+                    endpoint,
+                    json=payload,
+                    headers={"x-api-key": cfg.api_key or ""},
+                    timeout=cfg.timeout_seconds,
+                    verify=cfg.verify_ssl,
+                )
+                if cfg.debug and getattr(resp, "status_code", 0) >= 400:
+                    _debug(f"cloud log post failed: status={resp.status_code}")
+            except Exception as exc:
+                _debug(f"cloud log post failed: {exc!r}")
+                return
         except Exception:
+            # Logging handlers should never raise into host applications.
             self.handleError(record)
+        finally:
+            self._local.in_emit = False
+
+
+# Backwards-compatible alias (older name).
+AlshivalLogHandler = CloudLogHandler
+
+
+def _dedupe_add_handler(target: logging.Logger, handler: CloudLogHandler) -> CloudLogHandler:
+    for existing in target.handlers:
+        if isinstance(existing, CloudLogHandler) and getattr(existing, "resource_id", None) == handler.resource_id:
+            # Allow "reattaching" to update cloud_level/resource binding without duplicating handlers.
+            if handler.cloud_level is not None:
+                existing.cloud_level = handler.cloud_level
+            return existing
+    target.addHandler(handler)
+    return handler
 
 
 class AlshivalLogger:
-    """Alshival logger facade with stdlib logging integration."""
+    """Facade over a stdlib logger with optional cloud forwarding.
 
-    def __init__(self) -> None:
-        self._session = requests.Session()
-        self._local = threading.local()
+    - `alshival.log.info(...)` behaves like stdlib logging (passes through to handlers/propagation).
+    - Cloud forwarding is controlled independently via `alshival.configure(cloud_level=...)`.
+    """
 
-    def __repr__(self) -> str:
-        cfg = get_config()
-        masked = "set" if cfg.api_key else "unset"
-        return (
-            "AlshivalLogger("
-            f"username={cfg.username or 'unset'}, "
-            f"api_key={masked}, "
-            f"base_url={cfg.base_url}, "
-            f"resource_id={cfg.resource_id or 'unset'}, "
-            f"enabled={cfg.enabled}, "
-            f"timeout_seconds={cfg.timeout_seconds}, "
-            f"verify_ssl={cfg.verify_ssl}"
-            ")"
-        )
+    def __init__(self, name: str = "alshival") -> None:
+        self._logger = logging.getLogger(name)
+        _dedupe_add_handler(self._logger, CloudLogHandler())
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._logger, name)
 
     def details(self) -> dict[str, Any]:
-        """Return current configuration details (API key is masked)."""
+        """Return current SDK configuration (API key is masked)."""
         cfg = get_config()
         return {
             "username": cfg.username,
@@ -130,192 +238,88 @@ class AlshivalLogger:
             "base_url": cfg.base_url,
             "resource_id": cfg.resource_id,
             "enabled": cfg.enabled,
+            "cloud_level": cfg.cloud_level,
             "timeout_seconds": cfg.timeout_seconds,
             "verify_ssl": cfg.verify_ssl,
+            "debug": cfg.debug,
         }
 
-    def _resource_endpoint(self, username: str, resource_id: str) -> str:
-        cfg = get_config()
-        safe_user = quote(username.strip(), safe="")
-        safe_resource = quote(resource_id.strip(), safe="")
-        return f"{cfg.base_url.rstrip('/')}/DevTools/u/{safe_user}/resources/{safe_resource}/logs/"
+    def _with_resource(self, kwargs: dict[str, Any], resource_id: Optional[str]) -> dict[str, Any]:
+        if not resource_id:
+            return kwargs
+        extra = kwargs.get("extra")
+        merged: dict[str, Any] = {}
+        if isinstance(extra, Mapping):
+            merged.update(dict(extra))
+        merged["alshival_resource_id"] = resource_id
+        kwargs["extra"] = merged
+        return kwargs
 
-    def _send_payload(self, *, endpoint: str, payload: dict[str, Any], api_key: str) -> None:
-        cfg = get_config()
-        try:
-            self._session.post(
-                endpoint,
-                json=payload,
-                headers={"x-api-key": api_key},
-                timeout=cfg.timeout_seconds,
-                verify=cfg.verify_ssl,
-            )
-        except Exception:
-            # Never crash host applications for telemetry transport failures.
-            return
+    def log(self, level: int, msg: Any, *args: Any, resource_id: Optional[str] = None, **kwargs: Any) -> None:
+        self._logger.log(level, msg, *args, **self._with_resource(kwargs, resource_id))
 
-    def _send(
+    def debug(self, msg: Any, *args: Any, resource_id: Optional[str] = None, **kwargs: Any) -> None:
+        self._logger.debug(msg, *args, **self._with_resource(kwargs, resource_id))
+
+    def info(self, msg: Any, *args: Any, resource_id: Optional[str] = None, **kwargs: Any) -> None:
+        self._logger.info(msg, *args, **self._with_resource(kwargs, resource_id))
+
+    def warning(self, msg: Any, *args: Any, resource_id: Optional[str] = None, **kwargs: Any) -> None:
+        self._logger.warning(msg, *args, **self._with_resource(kwargs, resource_id))
+
+    def error(self, msg: Any, *args: Any, resource_id: Optional[str] = None, **kwargs: Any) -> None:
+        self._logger.error(msg, *args, **self._with_resource(kwargs, resource_id))
+
+    def critical(self, msg: Any, *args: Any, resource_id: Optional[str] = None, **kwargs: Any) -> None:
+        self._logger.critical(msg, *args, **self._with_resource(kwargs, resource_id))
+
+    def exception(self, msg: Any, *args: Any, resource_id: Optional[str] = None, **kwargs: Any) -> None:
+        # Keep stdlib semantics: logs at ERROR with exc_info=True by default.
+        kwargs.setdefault("exc_info", True)
+        self._logger.exception(msg, *args, **self._with_resource(kwargs, resource_id))
+
+    def handler(
         self,
-        level: str,
-        message: str,
         *,
-        extra: Optional[Mapping[str, Any]] = None,
+        # Back-compat alias: older versions used `level=` to indicate the minimum level forwarded to cloud.
+        level: Optional[int] = None,
+        cloud_level: Optional[int] = None,
         resource_id: Optional[str] = None,
-        logger_name: Optional[str] = None,
-    ) -> None:
-        """Send a single structured event to Alshival."""
-        cfg = get_config()
-        if not cfg.enabled:
-            return
-        if not cfg.username or not cfg.api_key:
-            return
-        resolved_resource = (resource_id or cfg.resource_id or "").strip()
-        if not resolved_resource:
-            # Resource-scoped endpoint requires a resource id.
-            return
-
-        if getattr(self._local, "in_send", False):
-            return
-        self._local.in_send = True
-        try:
-            payload: dict[str, Any] = {
-                "resource_id": resolved_resource,
-                "sdk": "alshival-python",
-                "sdk_version": _sdk_version(),
-                "logs": [
-                    {
-                        "level": level.lower(),
-                        "message": message,
-                        "logger": logger_name or "alshival",
-                        "ts": _utc_now_iso(),
-                    }
-                ],
-            }
-            if extra:
-                payload["logs"][0]["extra"] = _safe_value(dict(extra))
-            endpoint = self._resource_endpoint(cfg.username, resolved_resource)
-            self._send_payload(endpoint=endpoint, payload=payload, api_key=cfg.api_key)
-        finally:
-            self._local.in_send = False
-
-    def log(
-        self,
-        level: Union[int, str],
-        message: str,
-        *,
-        extra: Optional[Mapping[str, Any]] = None,
-        resource_id: Optional[str] = None,
-    ) -> None:
-        level_name = (
-            level.lower()
-            if isinstance(level, str)
-            else logging.getLevelName(level).lower()
-        )
-        self._send(level_name, message, extra=extra, resource_id=resource_id)
-
-    def debug(
-        self,
-        message: str,
-        *,
-        extra: Optional[Mapping[str, Any]] = None,
-        resource_id: Optional[str] = None,
-    ) -> None:
-        self._send("debug", message, extra=extra, resource_id=resource_id)
-
-    def info(
-        self,
-        message: str,
-        *,
-        extra: Optional[Mapping[str, Any]] = None,
-        resource_id: Optional[str] = None,
-    ) -> None:
-        self._send("info", message, extra=extra, resource_id=resource_id)
-
-    def warning(
-        self,
-        message: str,
-        *,
-        extra: Optional[Mapping[str, Any]] = None,
-        resource_id: Optional[str] = None,
-    ) -> None:
-        self._send("warning", message, extra=extra, resource_id=resource_id)
-
-    def warn(
-        self,
-        message: str,
-        *,
-        extra: Optional[Mapping[str, Any]] = None,
-        resource_id: Optional[str] = None,
-    ) -> None:
-        self.warning(message, extra=extra, resource_id=resource_id)
-
-    def error(
-        self,
-        message: str,
-        *,
-        extra: Optional[Mapping[str, Any]] = None,
-        resource_id: Optional[str] = None,
-    ) -> None:
-        self._send("error", message, extra=extra, resource_id=resource_id)
-
-    def critical(
-        self,
-        message: str,
-        *,
-        extra: Optional[Mapping[str, Any]] = None,
-        resource_id: Optional[str] = None,
-    ) -> None:
-        self._send("critical", message, extra=extra, resource_id=resource_id)
-
-    def exception(
-        self,
-        message: str = "",
-        *,
-        extra: Optional[Mapping[str, Any]] = None,
-        resource_id: Optional[str] = None,
-    ) -> None:
-        trace = traceback.format_exc()
-        combined = f"{message}\n{trace}" if message else trace
-        self._send("exception", combined, extra=extra, resource_id=resource_id)
-
-    def handler(self, *, level: int = logging.INFO, resource_id: Optional[str] = None) -> AlshivalLogHandler:
-        handler = AlshivalLogHandler(self, resource_id=resource_id)
-        handler.setLevel(level)
-        return handler
+    ) -> CloudLogHandler:
+        resolved_cloud_level = cloud_level if cloud_level is not None else level
+        return CloudLogHandler(resource_id=resource_id, cloud_level=resolved_cloud_level)
 
     def get_logger(
         self,
         name: str,
         *,
         level: int = logging.INFO,
+        cloud_level: Optional[int] = None,
         resource_id: Optional[str] = None,
         propagate: bool = False,
     ) -> logging.Logger:
         logger = logging.getLogger(name)
         logger.setLevel(level)
         logger.propagate = propagate
-        handler = self.handler(level=level, resource_id=resource_id)
-        already_attached = any(
-            isinstance(existing, AlshivalLogHandler) and getattr(existing, "resource_id", None) == resource_id
-            for existing in logger.handlers
-        )
-        if not already_attached:
-            logger.addHandler(handler)
+        # If cloud_level isn't provided, default to the logger's level (matches older behavior).
+        resolved_cloud_level = cloud_level if cloud_level is not None else level
+        handler = CloudLogHandler(resource_id=resource_id, cloud_level=resolved_cloud_level)
+        _dedupe_add_handler(logger, handler)
         return logger
 
     def attach(
         self,
-        logger: Union[logging.Logger, str],
+        logger: logging.Logger | str,
         *,
-        level: int = logging.INFO,
+        # Back-compat alias: older versions used `level=` to indicate the minimum level forwarded to cloud.
+        level: Optional[int] = None,
+        cloud_level: Optional[int] = None,
         resource_id: Optional[str] = None,
-    ) -> AlshivalLogHandler:
+    ) -> CloudLogHandler:
         target = logging.getLogger(logger) if isinstance(logger, str) else logger
-        handler = self.handler(level=level, resource_id=resource_id)
-        target.addHandler(handler)
-        if target.level == logging.NOTSET:
-            target.setLevel(level)
-        return handler
+        resolved_cloud_level = cloud_level if cloud_level is not None else level
+        handler = CloudLogHandler(resource_id=resource_id, cloud_level=resolved_cloud_level)
+        return _dedupe_add_handler(target, handler)
 
 
 log = AlshivalLogger()
