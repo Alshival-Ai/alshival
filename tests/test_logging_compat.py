@@ -59,7 +59,22 @@ class TestLoggingCompat(unittest.TestCase):
             args, kwargs = post.call_args
             self.assertIn("/resources/override-r/logs/", args[0])
 
+    def test_alert_level_and_tag_supported(self) -> None:
+        import alshival  # noqa: PLC0415
+
+        alshival.configure(username="u", api_key="k", resource_id="r", enabled=True, cloud_level="ALERT")
+        with mock.patch("requests.Session.post") as post:
+            alshival.log.error("below alert threshold")
+            post.assert_not_called()
+
+            alshival.log.alert("urgent incident")
+            self.assertTrue(post.called)
+            _args, kwargs = post.call_args
+            payload = kwargs.get("json") or {}
+            logs = payload.get("logs") or []
+            self.assertTrue(logs)
+            self.assertEqual(str(logs[0].get("level") or ""), "alert")
+
 
 if __name__ == "__main__":
     unittest.main()
-

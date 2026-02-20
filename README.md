@@ -34,7 +34,7 @@ The SDK reads these environment variables automatically:
 - `ALSHIVAL_API_KEY`
 - `ALSHIVAL_BASE_URL` (optional, defaults to `https://alshival.ai`)
 - `ALSHIVAL_RESOURCE_ID` (optional, UUID shown on Resource Details)
-- `ALSHIVAL_CLOUD_LEVEL` (optional, defaults to `INFO`; minimum level forwarded to Alshival Cloud Logs)
+- `ALSHIVAL_CLOUD_LEVEL` (optional, defaults to `INFO`; minimum level forwarded to Alshival Cloud Logs, supports `ALERT`)
 - `ALSHIVAL_DEBUG` (optional, `true/false`; prints SDK transport diagnostics to stderr)
 
 With those set, you can start logging immediately:
@@ -87,6 +87,7 @@ import alshival
 alshival.log.info("service started")
 alshival.log.warning("cache miss", extra={"key": "user:42"})
 alshival.log.error("db connection failed")
+alshival.log.alert("pager-worthy incident", extra={"service": "payments"})
 ```
 
 Attach logs to a specific resource per call:
@@ -121,6 +122,7 @@ alshival.configure(
 logger = alshival.get_logger("my-service", level=logging.INFO)
 logger.info("service online")
 logger.error("request failed", extra={"request_id": "abc123"})
+logger.log(alshival.ALERT_LEVEL, "high-priority incident detected")
 ```
 
 Attach to an existing logger:

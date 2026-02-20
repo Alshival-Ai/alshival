@@ -10,7 +10,7 @@ from urllib.parse import quote
 
 import requests
 
-from .client import get_config
+from .client import ALERT_LEVEL, get_config
 
 _RESERVED_RECORD_FIELDS = {
     "name",
@@ -36,6 +36,9 @@ _RESERVED_RECORD_FIELDS = {
     "message",
     "asctime",
 }
+
+if logging.getLevelName(ALERT_LEVEL) == f"Level {ALERT_LEVEL}":
+    logging.addLevelName(ALERT_LEVEL, "ALERT")
 
 
 def _utc_now_iso() -> str:
@@ -272,6 +275,9 @@ class AlshivalLogger:
 
     def critical(self, msg: Any, *args: Any, resource_id: Optional[str] = None, **kwargs: Any) -> None:
         self._logger.critical(msg, *args, **self._with_resource(kwargs, resource_id))
+
+    def alert(self, msg: Any, *args: Any, resource_id: Optional[str] = None, **kwargs: Any) -> None:
+        self._logger.log(ALERT_LEVEL, msg, *args, **self._with_resource(kwargs, resource_id))
 
     def exception(self, msg: Any, *args: Any, resource_id: Optional[str] = None, **kwargs: Any) -> None:
         # Keep stdlib semantics: logs at ERROR with exc_info=True by default.

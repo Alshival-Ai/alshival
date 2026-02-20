@@ -5,6 +5,8 @@ import os
 from dataclasses import dataclass
 from typing import Optional, Union
 
+ALERT_LEVEL = 45
+
 
 @dataclass
 class ClientConfig:
@@ -33,6 +35,7 @@ def _coerce_level(level: Union[int, str]) -> int:
         return level
     name = level.strip().upper()
     mapping = {
+        "ALERT": ALERT_LEVEL,
         "CRITICAL": logging.CRITICAL,
         "FATAL": logging.CRITICAL,
         "ERROR": logging.ERROR,

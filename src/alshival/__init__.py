@@ -1,4 +1,4 @@
-from .client import configure, set_enabled, get_config
+from .client import ALERT_LEVEL, configure, set_enabled, get_config
 from .logger import log
 
 
@@ -18,6 +18,7 @@ __all__ = [
     "configure",
     "set_enabled",
     "get_config",
+    "ALERT_LEVEL",
     "log",
     "get_logger",
     "handler",
