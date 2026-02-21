@@ -33,6 +33,7 @@ The SDK reads these environment variables automatically:
 - `ALSHIVAL_USERNAME`
 - `ALSHIVAL_EMAIL` (optional fallback when username is not available)
 - `ALSHIVAL_RESOURCE_OWNER_USERNAME` (optional; set when posting to a shared resource owned by another user)
+- `ALSHIVAL_RESOURCE` (optional full resource URL; auto-derives owner username, resource UUID, base URL, and path prefix)
 - `ALSHIVAL_API_KEY`
 - `ALSHIVAL_BASE_URL` (optional, defaults to `https://alshival.ai`)
 - `ALSHIVAL_PORTAL_PREFIX` (optional; override DevTools path prefix, for example `""` or `/DevTools`)
@@ -86,6 +87,18 @@ The logger sends events to your resource endpoint:
 For shared resources:
 - Endpoint owner path uses `ALSHIVAL_RESOURCE_OWNER_USERNAME` (or `configure(resource_owner_username=...)`).
 - API key identity uses your own `ALSHIVAL_USERNAME` and/or `ALSHIVAL_EMAIL`.
+
+You can also provide a full resource URL instead of separate owner/UUID settings:
+
+```env
+ALSHIVAL_RESOURCE=https://alshival.ai/DevTools/u/alshival/resources/3e2ad894-5e5f-4c34-9899-1f9c2158009c/
+```
+
+Equivalent runtime override:
+
+```python
+alshival.configure(resource="https://alshival.ai/DevTools/u/alshival/resources/<resource_uuid>/")
+```
 
 Basic usage:
 
@@ -202,3 +215,5 @@ Optional MCP env overrides:
 - If actor identity (`username` or `email`), `api_key`, or `resource_id` is missing, logs are skipped.
 - API key can be passed via `ALSHIVAL_API_KEY` or `alshival.configure(...)`.
 - TLS verification is on by default (`verify_ssl=True` in `configure`).
+- `404 invalid_resource` usually means the URL owner path and resource UUID do not match. For shared resources, keep your
+  own `ALSHIVAL_USERNAME`/`ALSHIVAL_EMAIL`, and set `ALSHIVAL_RESOURCE_OWNER_USERNAME` to the resource owner's username.

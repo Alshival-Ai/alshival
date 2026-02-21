@@ -4,7 +4,7 @@ import logging
 import os
 from dataclasses import dataclass
 from typing import Optional, Union
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote, unquote, urlsplit
 
 ALERT_LEVEL = 45
 
@@ -28,6 +28,14 @@ class ClientConfig:
     verify_ssl: bool = True
     # When True, emit SDK transport/config diagnostics to stderr (never raises).
     debug: bool = False
+
+
+@dataclass
+class ParsedResourceRef:
+    base_url: str
+    portal_prefix: str
+    resource_owner_username: str
+    resource_id: str
 
 
 def _env_bool(name: str, default: bool = False) -> bool:
@@ -78,14 +86,59 @@ def _env_level(name: str, default: int) -> int:
         return default
 
 
+def _parse_resource_reference(resource: Optional[str]) -> Optional[ParsedResourceRef]:
+    if resource is None:
+        return None
+    raw = str(resource).strip()
+    if not raw:
+        return None
+    parsed = urlsplit(raw)
+    if not parsed.scheme or not parsed.netloc:
+        return None
+    segments = [segment for segment in parsed.path.split("/") if segment]
+    if segments and segments[-1].strip().lower() == "logs":
+        segments = segments[:-1]
+    owner = ""
+    resource_id = ""
+    prefix_segments: list[str] = []
+    for index in range(max(0, len(segments) - 3)):
+        if segments[index] == "u" and segments[index + 2] == "resources":
+            owner = unquote(segments[index + 1]).strip()
+            resource_id = unquote(segments[index + 3]).strip()
+            prefix_segments = segments[:index]
+            break
+    if not owner or not resource_id:
+        return None
+    portal_prefix = "/" + "/".join(prefix_segments) if prefix_segments else ""
+    if portal_prefix == "/":
+        portal_prefix = ""
+    return ParsedResourceRef(
+        base_url=f"{parsed.scheme}://{parsed.netloc}".rstrip("/"),
+        portal_prefix=portal_prefix,
+        resource_owner_username=owner,
+        resource_id=resource_id,
+    )
+
+
+_resource_env = _parse_resource_reference(os.getenv("ALSHIVAL_RESOURCE") or os.getenv("ALSHIVAL_RESOURCE_URL"))
+_base_url_env = (
+    os.getenv("ALSHIVAL_BASE_URL")
+    or (_resource_env.base_url if _resource_env else None)
+    or "https://alshival.ai"
+)
+_portal_prefix_env = _normalize_portal_prefix(os.getenv("ALSHIVAL_PORTAL_PREFIX"))
+
 _config = ClientConfig(
     username=os.getenv("ALSHIVAL_USERNAME"),
     email=os.getenv("ALSHIVAL_EMAIL"),
-    resource_owner_username=os.getenv("ALSHIVAL_RESOURCE_OWNER_USERNAME"),
+    resource_owner_username=(
+        os.getenv("ALSHIVAL_RESOURCE_OWNER_USERNAME")
+        or (_resource_env.resource_owner_username if _resource_env else None)
+    ),
     api_key=os.getenv("ALSHIVAL_API_KEY"),
-    base_url=os.getenv("ALSHIVAL_BASE_URL", "https://alshival.ai").rstrip("/"),
-    portal_prefix=_normalize_portal_prefix(os.getenv("ALSHIVAL_PORTAL_PREFIX")),
-    resource_id=os.getenv("ALSHIVAL_RESOURCE_ID"),
+    base_url=str(_base_url_env).rstrip("/"),
+    portal_prefix=_portal_prefix_env if _portal_prefix_env is not None else (_resource_env.portal_prefix if _resource_env else None),
+    resource_id=os.getenv("ALSHIVAL_RESOURCE_ID") or (_resource_env.resource_id if _resource_env else None),
     cloud_level=_env_level("ALSHIVAL_CLOUD_LEVEL", logging.INFO),
     debug=_env_bool("ALSHIVAL_DEBUG", False),
 )
@@ -95,6 +148,7 @@ def configure(
     *,
     username: Optional[str] = None,
     email: Optional[str] = None,
+    resource: Optional[str] = None,
     resource_owner_username: Optional[str] = None,
     api_key: Optional[str] = None,
     base_url: Optional[str] = None,
@@ -106,6 +160,17 @@ def configure(
     verify_ssl: Optional[bool] = None,
     debug: Optional[bool] = None,
 ) -> None:
+    parsed_resource = _parse_resource_reference(resource) if resource is not None else None
+    if parsed_resource is not None:
+        if base_url is None:
+            base_url = parsed_resource.base_url
+        if portal_prefix is None:
+            portal_prefix = parsed_resource.portal_prefix
+        if resource_owner_username is None:
+            resource_owner_username = parsed_resource.resource_owner_username
+        if resource_id is None:
+            resource_id = parsed_resource.resource_id
+
     if username is not None:
         _config.username = username
     if email is not None:
