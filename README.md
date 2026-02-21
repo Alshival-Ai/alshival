@@ -31,8 +31,10 @@ To authenticate, create an API key in your Alshival account.
 The SDK reads these environment variables automatically:
 
 - `ALSHIVAL_USERNAME`
+- `ALSHIVAL_EMAIL` (optional fallback when username is not available)
 - `ALSHIVAL_API_KEY`
 - `ALSHIVAL_BASE_URL` (optional, defaults to `https://alshival.ai`)
+- `ALSHIVAL_PORTAL_PREFIX` (optional; override DevTools path prefix, for example `""` or `/DevTools`)
 - `ALSHIVAL_RESOURCE_ID` (optional, UUID shown on Resource Details)
 - `ALSHIVAL_CLOUD_LEVEL` (optional, defaults to `INFO`; minimum level forwarded to Alshival Cloud Logs, supports `ALERT`)
 - `ALSHIVAL_DEBUG` (optional, `true/false`; prints SDK transport diagnostics to stderr)
@@ -77,7 +79,8 @@ alshival.log.error("prints locally; sent to cloud")
 
 The logger sends events to your resource endpoint:
 
-- `https://alshival.ai/DevTools/u/<username>/resources/<resource_uuid>/logs/`
+- Main site (legacy path): `https://alshival.ai/DevTools/u/<username>/resources/<resource_uuid>/logs/`
+- DevTools domain: `https://alshival.dev/u/<username>/resources/<resource_uuid>/logs/`
 
 Basic usage:
 
@@ -145,6 +148,36 @@ h = alshival.handler(level=logging.INFO)
 root = logging.getLogger()
 root.addHandler(h)
 ```
+
+## Quick MCP Configuration
+
+The SDK exposes OpenAI Responses-compatible MCP tool specs:
+
+```python
+import alshival
+
+tools = [
+    alshival.mcp,
+    alshival.mcp.github,
+]
+```
+
+You can also build explicit specs (for overrides):
+
+```python
+import alshival
+
+primary = alshival.mcp_tool()
+github = alshival.github_mcp_tool()
+```
+
+Optional MCP env overrides:
+- `ALSHIVAL_MCP_URL` (default: `https://mcp.alshival.ai/mcp/`)
+- `ALSHIVAL_GITHUB_MCP_URL` (default: `https://mcp.alshival.ai/github/`)
+- `ALSHIVAL_MCP_REQUIRE_APPROVAL` (default: `never`)
+- `ALSHIVAL_MCP_API_KEY_HEADER` (default: `x-api-key`)
+- `ALSHIVAL_MCP_USERNAME_HEADER` (default: `x-user-username`)
+- `ALSHIVAL_MCP_EMAIL_HEADER` (default: `x-user-email`)
 
 ## Notes
 

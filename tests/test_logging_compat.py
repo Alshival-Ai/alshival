@@ -2,15 +2,17 @@ import logging
 import sys
 import unittest
 from unittest import mock
+from pathlib import Path
 
 
 class TestLoggingCompat(unittest.TestCase):
     def setUp(self) -> None:
-        # Ensure we import the SDK package, not the Django app at repo root.
-        sys.path.insert(0, "Packages/alshival/src")
+        # Ensure we import the SDK package, not similarly named local modules.
+        self._sdk_src = str(Path(__file__).resolve().parents[1] / "src")
+        sys.path.insert(0, self._sdk_src)
 
     def tearDown(self) -> None:
-        if sys.path and sys.path[0] == "Packages/alshival/src":
+        if sys.path and sys.path[0] == self._sdk_src:
             sys.path.pop(0)
 
     def test_cloud_level_filters_only_cloud_handler(self) -> None:

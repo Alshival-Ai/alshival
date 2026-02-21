@@ -6,11 +6,10 @@ import logging
 import threading
 import traceback
 from typing import Any, Mapping, Optional
-from urllib.parse import quote
 
 import requests
 
-from .client import ALERT_LEVEL, get_config
+from .client import ALERT_LEVEL, build_resource_logs_endpoint, get_config
 
 _RESERVED_RECORD_FIELDS = {
     "name",
@@ -94,10 +93,7 @@ class CloudLogHandler(logging.Handler):
         self._local = threading.local()
 
     def _resource_endpoint(self, username: str, resource_id: str) -> str:
-        cfg = get_config()
-        safe_user = quote(username.strip(), safe="")
-        safe_resource = quote(resource_id.strip(), safe="")
-        return f"{cfg.base_url.rstrip('/')}/DevTools/u/{safe_user}/resources/{safe_resource}/logs/"
+        return build_resource_logs_endpoint(username, resource_id)
 
     def _session(self) -> requests.Session:
         # requests.Session is not documented as thread-safe; keep one per thread.
