@@ -13,6 +13,9 @@ ALERT_LEVEL = 45
 class ClientConfig:
     username: Optional[str] = None
     email: Optional[str] = None
+    # Optional owner username for shared-resource logging paths.
+    # When set, logs post to /u/<resource_owner_username>/... while auth stays tied to username/email.
+    resource_owner_username: Optional[str] = None
     api_key: Optional[str] = None
     base_url: str = "https://alshival.ai"
     # Optional explicit DevTools portal prefix (for example "/DevTools" or "").
@@ -78,6 +81,7 @@ def _env_level(name: str, default: int) -> int:
 _config = ClientConfig(
     username=os.getenv("ALSHIVAL_USERNAME"),
     email=os.getenv("ALSHIVAL_EMAIL"),
+    resource_owner_username=os.getenv("ALSHIVAL_RESOURCE_OWNER_USERNAME"),
     api_key=os.getenv("ALSHIVAL_API_KEY"),
     base_url=os.getenv("ALSHIVAL_BASE_URL", "https://alshival.ai").rstrip("/"),
     portal_prefix=_normalize_portal_prefix(os.getenv("ALSHIVAL_PORTAL_PREFIX")),
@@ -91,6 +95,7 @@ def configure(
     *,
     username: Optional[str] = None,
     email: Optional[str] = None,
+    resource_owner_username: Optional[str] = None,
     api_key: Optional[str] = None,
     base_url: Optional[str] = None,
     portal_prefix: Optional[str] = None,
@@ -105,6 +110,8 @@ def configure(
         _config.username = username
     if email is not None:
         _config.email = email
+    if resource_owner_username is not None:
+        _config.resource_owner_username = resource_owner_username
     if api_key is not None:
         _config.api_key = api_key
     if base_url is not None:

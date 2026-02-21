@@ -77,6 +77,44 @@ class TestLoggingCompat(unittest.TestCase):
             self.assertTrue(logs)
             self.assertEqual(str(logs[0].get("level") or ""), "alert")
 
+    def test_shared_resource_uses_owner_path_with_actor_headers(self) -> None:
+        import alshival  # noqa: PLC0415
+
+        alshival.configure(
+            username="viewer-user",
+            email="viewer@example.com",
+            resource_owner_username="owner-user",
+            api_key="k",
+            resource_id="r",
+            enabled=True,
+            cloud_level=logging.INFO,
+        )
+        with mock.patch("requests.Session.post") as post:
+            alshival.log.info("shared write")
+            self.assertTrue(post.called)
+            args, kwargs = post.call_args
+            self.assertIn("/u/owner-user/resources/r/logs/", args[0])
+            headers = kwargs.get("headers") or {}
+            self.assertEqual(headers.get("x-api-key"), "k")
+            self.assertEqual(headers.get("x-user-username"), "viewer-user")
+            self.assertEqual(headers.get("x-user-email"), "viewer@example.com")
+
+    def test_cloud_send_works_with_email_only_identity(self) -> None:
+        import alshival  # noqa: PLC0415
+
+        alshival.configure(
+            username="",
+            email="viewer@example.com",
+            resource_owner_username="owner-user",
+            api_key="k",
+            resource_id="r",
+            enabled=True,
+            cloud_level=logging.INFO,
+        )
+        with mock.patch("requests.Session.post") as post:
+            alshival.log.info("shared write with email")
+            self.assertTrue(post.called)
+
 
 if __name__ == "__main__":
     unittest.main()

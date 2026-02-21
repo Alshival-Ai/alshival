@@ -32,6 +32,7 @@ The SDK reads these environment variables automatically:
 
 - `ALSHIVAL_USERNAME`
 - `ALSHIVAL_EMAIL` (optional fallback when username is not available)
+- `ALSHIVAL_RESOURCE_OWNER_USERNAME` (optional; set when posting to a shared resource owned by another user)
 - `ALSHIVAL_API_KEY`
 - `ALSHIVAL_BASE_URL` (optional, defaults to `https://alshival.ai`)
 - `ALSHIVAL_PORTAL_PREFIX` (optional; override DevTools path prefix, for example `""` or `/DevTools`)
@@ -82,6 +83,10 @@ The logger sends events to your resource endpoint:
 - Main site (legacy path): `https://alshival.ai/DevTools/u/<username>/resources/<resource_uuid>/logs/`
 - DevTools domain: `https://alshival.dev/u/<username>/resources/<resource_uuid>/logs/`
 
+For shared resources:
+- Endpoint owner path uses `ALSHIVAL_RESOURCE_OWNER_USERNAME` (or `configure(resource_owner_username=...)`).
+- API key identity uses your own `ALSHIVAL_USERNAME` and/or `ALSHIVAL_EMAIL`.
+
 Basic usage:
 
 ```python
@@ -126,6 +131,18 @@ logger = alshival.get_logger("my-service", level=logging.INFO)
 logger.info("service online")
 logger.error("request failed", extra={"request_id": "abc123"})
 logger.log(alshival.ALERT_LEVEL, "high-priority incident detected")
+
+# Shared resource example:
+# - your key/identity: username/email
+# - resource path owner: resource_owner_username
+alshival.configure(
+    username="collaborator-user",
+    email="collaborator@example.com",
+    resource_owner_username="owner-user",
+    api_key="your_collaborator_api_key",
+    resource_id="owner-resource-uuid",
+)
+logger.info("shared resource event")
 ```
 
 Attach to an existing logger:
@@ -182,6 +199,6 @@ Optional MCP env overrides:
 ## Notes
 
 - The SDK is fail-safe by design. Network errors never crash your app.
-- If `username`, `api_key`, or `resource_id` is missing, logs are skipped.
+- If actor identity (`username` or `email`), `api_key`, or `resource_id` is missing, logs are skipped.
 - API key can be passed via `ALSHIVAL_API_KEY` or `alshival.configure(...)`.
 - TLS verification is on by default (`verify_ssl=True` in `configure`).

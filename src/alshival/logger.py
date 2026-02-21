@@ -110,7 +110,10 @@ class CloudLogHandler(logging.Handler):
         min_level = self.cloud_level if self.cloud_level is not None else cfg.cloud_level
         if record.levelno < min_level:
             return False
-        if not cfg.username or not cfg.api_key:
+        if not cfg.api_key:
+            return False
+        # Personal API keys require actor context (username or email).
+        if not (cfg.username or cfg.email):
             return False
         return True
 
@@ -178,12 +181,18 @@ class CloudLogHandler(logging.Handler):
                 ],
             }
 
-            endpoint = self._resource_endpoint(cfg.username or "", resolved_resource)
+            resource_owner = str(cfg.resource_owner_username or cfg.username or "").strip()
+            endpoint = self._resource_endpoint(resource_owner, resolved_resource)
+            headers = {"x-api-key": cfg.api_key or ""}
+            if cfg.username:
+                headers["x-user-username"] = cfg.username
+            if cfg.email:
+                headers["x-user-email"] = cfg.email
             try:
                 resp = self._session().post(
                     endpoint,
                     json=payload,
-                    headers={"x-api-key": cfg.api_key or ""},
+                    headers=headers,
                     timeout=cfg.timeout_seconds,
                     verify=cfg.verify_ssl,
                 )
