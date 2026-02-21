@@ -15,7 +15,7 @@ class ClientConfig:
     # Derived from `resource` URL.
     resource_owner_username: Optional[str] = None
     api_key: Optional[str] = None
-    base_url: str = "https://alshival.ai"
+    base_url: str = "https://alshival.dev"
     # Optional explicit DevTools portal prefix (for example "/DevTools" or "").
     portal_prefix: Optional[str] = None
     # Derived from `resource` URL.
@@ -119,26 +119,33 @@ def _parse_resource_reference(resource: Optional[str]) -> Optional[ParsedResourc
     )
 
 
-_resource_env = _parse_resource_reference(os.getenv("ALSHIVAL_RESOURCE") or os.getenv("ALSHIVAL_RESOURCE_URL"))
-_base_url_env = (
-    os.getenv("ALSHIVAL_BASE_URL")
-    or (_resource_env.base_url if _resource_env else None)
-    or "https://alshival.ai"
-)
-_portal_prefix_env = _normalize_portal_prefix(os.getenv("ALSHIVAL_PORTAL_PREFIX"))
-_debug_env = _env_bool("ALSHIVAL_DEBUG", False)
-_default_cloud_level = logging.DEBUG if _debug_env else logging.INFO
+def build_client_config_from_env() -> ClientConfig:
+    resource_env = _parse_resource_reference(os.getenv("ALSHIVAL_RESOURCE") or os.getenv("ALSHIVAL_RESOURCE_URL"))
+    debug_env = _env_bool("ALSHIVAL_DEBUG", False)
+    default_cloud_level = logging.DEBUG if debug_env else logging.INFO
 
-_config = ClientConfig(
-    username=os.getenv("ALSHIVAL_USERNAME"),
-    resource_owner_username=(_resource_env.resource_owner_username if _resource_env else None),
-    api_key=os.getenv("ALSHIVAL_API_KEY"),
-    base_url=str(_base_url_env).rstrip("/"),
-    portal_prefix=_portal_prefix_env if _portal_prefix_env is not None else (_resource_env.portal_prefix if _resource_env else None),
-    resource_id=(_resource_env.resource_id if _resource_env else None),
-    cloud_level=_env_level("ALSHIVAL_CLOUD_LEVEL", _default_cloud_level),
-    debug=_debug_env,
-)
+    if resource_env is not None:
+        # Resource URL is authoritative for routing. This avoids mixed-domain mismatches
+        # (for example `ALSHIVAL_BASE_URL=alshival.ai` + `ALSHIVAL_RESOURCE=alshival.dev/u/...`).
+        base_url = resource_env.base_url
+        portal_prefix = resource_env.portal_prefix
+    else:
+        base_url = os.getenv("ALSHIVAL_BASE_URL") or "https://alshival.dev"
+        portal_prefix = _normalize_portal_prefix(os.getenv("ALSHIVAL_PORTAL_PREFIX"))
+
+    return ClientConfig(
+        username=os.getenv("ALSHIVAL_USERNAME"),
+        resource_owner_username=(resource_env.resource_owner_username if resource_env else None),
+        api_key=os.getenv("ALSHIVAL_API_KEY"),
+        base_url=str(base_url).rstrip("/"),
+        portal_prefix=portal_prefix,
+        resource_id=(resource_env.resource_id if resource_env else None),
+        cloud_level=_env_level("ALSHIVAL_CLOUD_LEVEL", default_cloud_level),
+        debug=debug_env,
+    )
+
+
+_config = build_client_config_from_env()
 
 
 def configure(
@@ -228,7 +235,7 @@ def build_resource_logs_endpoint(username: str, resource_id: str) -> str:
     scheme = parsed.scheme or "https"
     netloc = parsed.netloc or parsed.path
     if not netloc:
-        netloc = "alshival.ai"
+        netloc = "alshival.dev"
     base = f"{scheme}://{netloc}"
     portal_prefix = _resolved_portal_prefix()
     safe_user = quote(str(username or "").strip(), safe="")

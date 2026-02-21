@@ -33,7 +33,7 @@ The SDK reads these environment variables automatically:
 - `ALSHIVAL_USERNAME`
 - `ALSHIVAL_RESOURCE` (required for cloud logs; full resource URL, auto-derives owner username, resource UUID, base URL, and path prefix)
 - `ALSHIVAL_API_KEY`
-- `ALSHIVAL_BASE_URL` (optional, defaults to `https://alshival.ai`)
+- `ALSHIVAL_BASE_URL` (optional, defaults to `https://alshival.dev` when `ALSHIVAL_RESOURCE` is not set)
 - `ALSHIVAL_PORTAL_PREFIX` (optional; override DevTools path prefix, for example `""` or `/DevTools`)
 - `ALSHIVAL_CLOUD_LEVEL` (optional, defaults to `INFO`; minimum level forwarded to Alshival Cloud Logs, supports `ALERT`)
 - `ALSHIVAL_DEBUG` (optional, `true/false`; enables SDK debug console output and defaults cloud forwarding to `DEBUG` unless `ALSHIVAL_CLOUD_LEVEL` is set)
@@ -66,7 +66,7 @@ alshival.configure(
     username=os.getenv("ALSHIVAL_USERNAME"),
     api_key=os.getenv("ALSHIVAL_API_KEY"),
     resource=os.getenv("ALSHIVAL_RESOURCE"),
-    base_url=os.getenv("ALSHIVAL_BASE_URL", "https://alshival.ai"),
+    base_url=os.getenv("ALSHIVAL_BASE_URL", "https://alshival.dev"),
     cloud_level=logging.ERROR,  # only forward ERROR+ to Alshival Cloud Logs
 )
 
@@ -84,17 +84,18 @@ The logger sends events to your resource endpoint:
 For shared resources:
 - Keep API key identity as your own `ALSHIVAL_USERNAME`.
 - Point `ALSHIVAL_RESOURCE` at the owner's resource URL.
+- When `ALSHIVAL_RESOURCE` is set, the SDK derives host and path prefix from that URL (avoids `base_url`/prefix mismatches).
 
 You can also provide a full resource URL instead of separate owner/UUID settings:
 
 ```env
-ALSHIVAL_RESOURCE=https://alshival.ai/DevTools/u/alshival/resources/3e2ad894-5e5f-4c34-9899-1f9c2158009c/
+ALSHIVAL_RESOURCE=https://alshival.dev/u/alshival/resources/3e2ad894-5e5f-4c34-9899-1f9c2158009c/
 ```
 
 Equivalent runtime override:
 
 ```python
-alshival.configure(resource="https://alshival.ai/DevTools/u/alshival/resources/<resource_uuid>/")
+alshival.configure(resource="https://alshival.dev/u/alshival/resources/<resource_uuid>/")
 ```
 
 Basic usage:
@@ -138,7 +139,7 @@ import alshival
 alshival.configure(
     username="samuel",
     api_key="your_api_key",
-    resource="https://alshival.ai/DevTools/u/samuel/resources/82d7e623-b8ad-4ee6-a047-75bbe587486f/",
+    resource="https://alshival.dev/u/samuel/resources/82d7e623-b8ad-4ee6-a047-75bbe587486f/",
 )
 
 logger = alshival.get_logger("my-service", level=logging.INFO)
@@ -152,7 +153,7 @@ logger.log(alshival.ALERT_LEVEL, "high-priority incident detected")
 alshival.configure(
     username="collaborator-user",
     api_key="your_collaborator_api_key",
-    resource="https://alshival.ai/DevTools/u/owner-user/resources/owner-resource-uuid/",
+    resource="https://alshival.dev/u/owner-user/resources/owner-resource-uuid/",
 )
 logger.info("shared resource event")
 ```

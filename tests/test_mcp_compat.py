@@ -1,6 +1,8 @@
 import logging
+import os
 import sys
 import unittest
+from unittest import mock
 from pathlib import Path
 
 
@@ -83,6 +85,24 @@ class TestMCPCompat(unittest.TestCase):
         self.assertEqual(cfg.portal_prefix, "")
         self.assertEqual(cfg.resource_owner_username, "alshival")
         self.assertEqual(cfg.resource_id, "3e2ad894-5e5f-4c34-9899-1f9c2158009c")
+
+    def test_env_resource_url_wins_over_conflicting_base_url(self) -> None:
+        from alshival.client import build_client_config_from_env  # noqa: PLC0415
+
+        with mock.patch.dict(
+            os.environ,
+            {
+                "ALSHIVAL_BASE_URL": "https://alshival.ai",
+                "ALSHIVAL_RESOURCE": "https://alshival.dev/u/owner-user/resources/r-123/",
+            },
+            clear=False,
+        ):
+            cfg = build_client_config_from_env()
+
+        self.assertEqual(cfg.base_url, "https://alshival.dev")
+        self.assertEqual(cfg.portal_prefix, "")
+        self.assertEqual(cfg.resource_owner_username, "owner-user")
+        self.assertEqual(cfg.resource_id, "r-123")
 
     def test_mcp_tool_helpers_available(self) -> None:
         import alshival  # noqa: PLC0415
