@@ -31,15 +31,12 @@ To authenticate, create an API key in your Alshival account.
 The SDK reads these environment variables automatically:
 
 - `ALSHIVAL_USERNAME`
-- `ALSHIVAL_EMAIL` (optional fallback when username is not available)
-- `ALSHIVAL_RESOURCE_OWNER_USERNAME` (optional; set when posting to a shared resource owned by another user)
-- `ALSHIVAL_RESOURCE` (optional full resource URL; auto-derives owner username, resource UUID, base URL, and path prefix)
+- `ALSHIVAL_RESOURCE` (required for cloud logs; full resource URL, auto-derives owner username, resource UUID, base URL, and path prefix)
 - `ALSHIVAL_API_KEY`
 - `ALSHIVAL_BASE_URL` (optional, defaults to `https://alshival.ai`)
 - `ALSHIVAL_PORTAL_PREFIX` (optional; override DevTools path prefix, for example `""` or `/DevTools`)
-- `ALSHIVAL_RESOURCE_ID` (optional, UUID shown on Resource Details)
 - `ALSHIVAL_CLOUD_LEVEL` (optional, defaults to `INFO`; minimum level forwarded to Alshival Cloud Logs, supports `ALERT`)
-- `ALSHIVAL_DEBUG` (optional, `true/false`; prints SDK transport diagnostics to stderr)
+- `ALSHIVAL_DEBUG` (optional, `true/false`; enables SDK debug console output and defaults cloud forwarding to `DEBUG` unless `ALSHIVAL_CLOUD_LEVEL` is set)
 
 With those set, you can start logging immediately:
 
@@ -68,8 +65,8 @@ logging.basicConfig(level=logging.INFO)
 alshival.configure(
     username=os.getenv("ALSHIVAL_USERNAME"),
     api_key=os.getenv("ALSHIVAL_API_KEY"),
+    resource=os.getenv("ALSHIVAL_RESOURCE"),
     base_url=os.getenv("ALSHIVAL_BASE_URL", "https://alshival.ai"),
-    resource_id=os.getenv("ALSHIVAL_RESOURCE_ID"),
     cloud_level=logging.ERROR,  # only forward ERROR+ to Alshival Cloud Logs
 )
 
@@ -85,8 +82,8 @@ The logger sends events to your resource endpoint:
 - DevTools domain: `https://alshival.dev/u/<username>/resources/<resource_uuid>/logs/`
 
 For shared resources:
-- Endpoint owner path uses `ALSHIVAL_RESOURCE_OWNER_USERNAME` (or `configure(resource_owner_username=...)`).
-- API key identity uses your own `ALSHIVAL_USERNAME` and/or `ALSHIVAL_EMAIL`.
+- Keep API key identity as your own `ALSHIVAL_USERNAME`.
+- Point `ALSHIVAL_RESOURCE` at the owner's resource URL.
 
 You can also provide a full resource URL instead of separate owner/UUID settings:
 
@@ -107,9 +104,13 @@ import alshival
 
 alshival.log.info("service started")
 alshival.log.warning("cache miss", extra={"key": "user:42"})
+alshival.log.debug("verbose trace")
 alshival.log.error("db connection failed")
 alshival.log.alert("pager-worthy incident", extra={"service": "payments"})
 ```
+
+To forward debug events to cloud logs, set `ALSHIVAL_CLOUD_LEVEL=DEBUG`. When `ALSHIVAL_DEBUG=true`,
+SDK debug messages are printed to console and debug-level cloud forwarding is enabled by default when possible.
 
 Attach logs to a specific resource per call:
 
@@ -137,7 +138,7 @@ import alshival
 alshival.configure(
     username="samuel",
     api_key="your_api_key",
-    resource_id="82d7e623-b8ad-4ee6-a047-75bbe587486f",
+    resource="https://alshival.ai/DevTools/u/samuel/resources/82d7e623-b8ad-4ee6-a047-75bbe587486f/",
 )
 
 logger = alshival.get_logger("my-service", level=logging.INFO)
@@ -146,14 +147,12 @@ logger.error("request failed", extra={"request_id": "abc123"})
 logger.log(alshival.ALERT_LEVEL, "high-priority incident detected")
 
 # Shared resource example:
-# - your key/identity: username/email
-# - resource path owner: resource_owner_username
+# - your key/identity: username
+# - URL path points to the owner's resource URL
 alshival.configure(
     username="collaborator-user",
-    email="collaborator@example.com",
-    resource_owner_username="owner-user",
     api_key="your_collaborator_api_key",
-    resource_id="owner-resource-uuid",
+    resource="https://alshival.ai/DevTools/u/owner-user/resources/owner-resource-uuid/",
 )
 logger.info("shared resource event")
 ```
@@ -207,13 +206,11 @@ Optional MCP env overrides:
 - `ALSHIVAL_MCP_REQUIRE_APPROVAL` (default: `never`)
 - `ALSHIVAL_MCP_API_KEY_HEADER` (default: `x-api-key`)
 - `ALSHIVAL_MCP_USERNAME_HEADER` (default: `x-user-username`)
-- `ALSHIVAL_MCP_EMAIL_HEADER` (default: `x-user-email`)
 
 ## Notes
 
 - The SDK is fail-safe by design. Network errors never crash your app.
-- If actor identity (`username` or `email`), `api_key`, or `resource_id` is missing, logs are skipped.
+- If `username`, `api_key`, or `resource` target is missing, logs are skipped.
 - API key can be passed via `ALSHIVAL_API_KEY` or `alshival.configure(...)`.
 - TLS verification is on by default (`verify_ssl=True` in `configure`).
-- `404 invalid_resource` usually means the URL owner path and resource UUID do not match. For shared resources, keep your
-  own `ALSHIVAL_USERNAME`/`ALSHIVAL_EMAIL`, and set `ALSHIVAL_RESOURCE_OWNER_USERNAME` to the resource owner's username.
+- `404 invalid_resource` usually means the URL owner path and resource UUID do not match.

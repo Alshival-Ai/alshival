@@ -35,6 +35,7 @@ _RESERVED_RECORD_FIELDS = {
     "message",
     "asctime",
 }
+_DEBUG_CONSOLE_HANDLER_ATTR = "_alshival_debug_console_handler"
 
 if logging.getLevelName(ALERT_LEVEL) == f"Level {ALERT_LEVEL}":
     logging.addLevelName(ALERT_LEVEL, "ALERT")
@@ -112,8 +113,8 @@ class CloudLogHandler(logging.Handler):
             return False
         if not cfg.api_key:
             return False
-        # Personal API keys require actor context (username or email).
-        if not (cfg.username or cfg.email):
+        # Personal API keys require username actor context.
+        if not cfg.username:
             return False
         return True
 
@@ -141,7 +142,7 @@ class CloudLogHandler(logging.Handler):
             cfg = get_config()
             resolved_resource = self._resolved_resource_id(record)
             if not resolved_resource:
-                _debug("skipping cloud log: missing resource_id (set ALSHIVAL_RESOURCE_ID or pass resource_id)")
+                _debug("skipping cloud log: missing resource target (set ALSHIVAL_RESOURCE or pass resource_id)")
                 return
 
             message = record.getMessage()
@@ -186,8 +187,6 @@ class CloudLogHandler(logging.Handler):
             headers = {"x-api-key": cfg.api_key or ""}
             if cfg.username:
                 headers["x-user-username"] = cfg.username
-            if cfg.email:
-                headers["x-user-email"] = cfg.email
             try:
                 resp = self._session().post(
                     endpoint,
@@ -212,6 +211,25 @@ class CloudLogHandler(logging.Handler):
 AlshivalLogHandler = CloudLogHandler
 
 
+def refresh_debug_console_handler() -> None:
+    cfg = get_config()
+    target = logging.getLogger("alshival")
+    existing = [
+        handler for handler in target.handlers if bool(getattr(handler, _DEBUG_CONSOLE_HANDLER_ATTR, False))
+    ]
+    if cfg.debug:
+        if existing:
+            return
+        handler = logging.StreamHandler()
+        handler.setLevel(logging.DEBUG)
+        handler.setFormatter(logging.Formatter("[alshival] %(levelname)s %(message)s"))
+        setattr(handler, _DEBUG_CONSOLE_HANDLER_ATTR, True)
+        target.addHandler(handler)
+        return
+    for handler in existing:
+        target.removeHandler(handler)
+
+
 def _dedupe_add_handler(target: logging.Logger, handler: CloudLogHandler) -> CloudLogHandler:
     for existing in target.handlers:
         if isinstance(existing, CloudLogHandler) and getattr(existing, "resource_id", None) == handler.resource_id:
@@ -232,6 +250,10 @@ class AlshivalLogger:
 
     def __init__(self, name: str = "alshival") -> None:
         self._logger = logging.getLogger(name)
+        # Keep facade-level methods (`alshival.log.debug/info/...`) independent from root logger filtering.
+        # Cloud forwarding still honors configured `cloud_level`.
+        self._logger.setLevel(logging.DEBUG)
+        refresh_debug_console_handler()
         _dedupe_add_handler(self._logger, CloudLogHandler())
 
     def __getattr__(self, name: str) -> Any:

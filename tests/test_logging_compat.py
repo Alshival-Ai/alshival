@@ -1,4 +1,5 @@
 import logging
+import io
 import sys
 import unittest
 from unittest import mock
@@ -10,6 +11,21 @@ class TestLoggingCompat(unittest.TestCase):
         # Ensure we import the SDK package, not similarly named local modules.
         self._sdk_src = str(Path(__file__).resolve().parents[1] / "src")
         sys.path.insert(0, self._sdk_src)
+        import alshival  # noqa: PLC0415
+        from alshival.client import get_config  # noqa: PLC0415
+        from alshival.logger import refresh_debug_console_handler  # noqa: PLC0415
+
+        cfg = get_config()
+        cfg.username = None
+        cfg.resource_owner_username = None
+        cfg.api_key = None
+        cfg.base_url = "https://alshival.ai"
+        cfg.portal_prefix = None
+        cfg.resource_id = None
+        cfg.enabled = True
+        cfg.cloud_level = logging.INFO
+        cfg.debug = False
+        refresh_debug_console_handler()
 
     def tearDown(self) -> None:
         if sys.path and sys.path[0] == self._sdk_src:
@@ -18,7 +34,13 @@ class TestLoggingCompat(unittest.TestCase):
     def test_cloud_level_filters_only_cloud_handler(self) -> None:
         import alshival  # noqa: PLC0415
 
-        alshival.configure(username="u", api_key="k", resource_id="r", enabled=True, cloud_level=logging.ERROR)
+        alshival.configure(
+            username="u",
+            api_key="k",
+            resource="https://alshival.dev/u/u/resources/r/",
+            enabled=True,
+            cloud_level=logging.ERROR,
+        )
 
         # Attach a capture handler to verify the log record is still emitted normally.
         capture = []
@@ -42,6 +64,51 @@ class TestLoggingCompat(unittest.TestCase):
         finally:
             base_logger.removeHandler(cap_h)
 
+    def test_debug_method_forwards_when_cloud_level_debug(self) -> None:
+        import alshival  # noqa: PLC0415
+
+        root_logger = logging.getLogger()
+        original_root_level = root_logger.level
+        root_logger.setLevel(logging.WARNING)
+        try:
+            alshival.configure(
+                username="u",
+                api_key="k",
+                resource="https://alshival.dev/u/u/resources/r/",
+                enabled=True,
+                cloud_level=logging.DEBUG,
+            )
+            with mock.patch("requests.Session.post") as post:
+                alshival.log.debug("debug event")
+                self.assertTrue(post.called)
+        finally:
+            root_logger.setLevel(original_root_level)
+
+    def test_sdk_debug_mode_prints_to_console_and_forwards_when_possible(self) -> None:
+        import alshival  # noqa: PLC0415
+
+        root_logger = logging.getLogger()
+        original_root_level = root_logger.level
+        root_logger.setLevel(logging.WARNING)
+        buf = io.StringIO()
+        with mock.patch("sys.stderr", new=buf):
+            try:
+                alshival.configure(
+                    username="u",
+                    api_key="k",
+                    resource="https://alshival.dev/u/u/resources/r/",
+                    enabled=True,
+                    debug=True,
+                )
+                # Keep output focused on SDK logger handlers in this test.
+                alshival.log._logger.propagate = False  # type: ignore[attr-defined]
+                with mock.patch("requests.Session.post") as post:
+                    alshival.log.debug("sdk debug trace")
+                    self.assertTrue(post.called)
+                self.assertIn("sdk debug trace", buf.getvalue())
+            finally:
+                root_logger.setLevel(original_root_level)
+
     def test_attach_is_deduped(self) -> None:
         import alshival  # noqa: PLC0415
 
@@ -54,7 +121,13 @@ class TestLoggingCompat(unittest.TestCase):
     def test_resource_id_override_via_kwarg(self) -> None:
         import alshival  # noqa: PLC0415
 
-        alshival.configure(username="u", api_key="k", resource_id="r", enabled=True, cloud_level=logging.INFO)
+        alshival.configure(
+            username="u",
+            api_key="k",
+            resource="https://alshival.dev/u/u/resources/r/",
+            enabled=True,
+            cloud_level=logging.INFO,
+        )
         with mock.patch("requests.Session.post") as post:
             alshival.log.error("boom", resource_id="override-r")
             self.assertTrue(post.called)
@@ -64,7 +137,13 @@ class TestLoggingCompat(unittest.TestCase):
     def test_alert_level_and_tag_supported(self) -> None:
         import alshival  # noqa: PLC0415
 
-        alshival.configure(username="u", api_key="k", resource_id="r", enabled=True, cloud_level="ALERT")
+        alshival.configure(
+            username="u",
+            api_key="k",
+            resource="https://alshival.dev/u/u/resources/r/",
+            enabled=True,
+            cloud_level="ALERT",
+        )
         with mock.patch("requests.Session.post") as post:
             alshival.log.error("below alert threshold")
             post.assert_not_called()
@@ -82,10 +161,8 @@ class TestLoggingCompat(unittest.TestCase):
 
         alshival.configure(
             username="viewer-user",
-            email="viewer@example.com",
-            resource_owner_username="owner-user",
             api_key="k",
-            resource_id="r",
+            resource="https://alshival.dev/u/owner-user/resources/r/",
             enabled=True,
             cloud_level=logging.INFO,
         )
@@ -97,23 +174,21 @@ class TestLoggingCompat(unittest.TestCase):
             headers = kwargs.get("headers") or {}
             self.assertEqual(headers.get("x-api-key"), "k")
             self.assertEqual(headers.get("x-user-username"), "viewer-user")
-            self.assertEqual(headers.get("x-user-email"), "viewer@example.com")
+            self.assertNotIn("x-user-email", headers)
 
-    def test_cloud_send_works_with_email_only_identity(self) -> None:
+    def test_cloud_send_requires_username_identity(self) -> None:
         import alshival  # noqa: PLC0415
 
         alshival.configure(
             username="",
-            email="viewer@example.com",
-            resource_owner_username="owner-user",
             api_key="k",
-            resource_id="r",
+            resource="https://alshival.dev/u/owner-user/resources/r/",
             enabled=True,
             cloud_level=logging.INFO,
         )
         with mock.patch("requests.Session.post") as post:
-            alshival.log.info("shared write with email")
-            self.assertTrue(post.called)
+            alshival.log.info("shared write without username")
+            post.assert_not_called()
 
 
 if __name__ == "__main__":

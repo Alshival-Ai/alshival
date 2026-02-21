@@ -13,7 +13,6 @@ class TestMCPCompat(unittest.TestCase):
 
         cfg = get_config()
         cfg.username = None
-        cfg.email = None
         cfg.resource_owner_username = None
         cfg.api_key = None
         cfg.base_url = "https://alshival.ai"
@@ -88,22 +87,23 @@ class TestMCPCompat(unittest.TestCase):
     def test_mcp_tool_helpers_available(self) -> None:
         import alshival  # noqa: PLC0415
 
-        alshival.configure(username="sam", email="", api_key="secret-key")
+        alshival.configure(username="sam", api_key="secret-key")
         self.assertEqual(alshival.mcp["type"], "mcp")
         self.assertEqual(alshival.mcp["server_label"], "alshival-mcp")
         self.assertEqual(alshival.mcp["headers"]["x-api-key"], "secret-key")
         self.assertEqual(alshival.mcp["headers"]["x-user-username"], "sam")
+        self.assertNotIn("x-user-email", alshival.mcp["headers"])
         self.assertEqual(alshival.mcp.github["server_label"], "github-mcp")
         self.assertIn("server_url", alshival.mcp.github)
 
-    def test_mcp_headers_fall_back_to_email(self) -> None:
+    def test_mcp_headers_with_missing_username_omit_user_header(self) -> None:
         import alshival  # noqa: PLC0415
 
-        alshival.configure(username="", email="sam@example.com", api_key="secret-key")
+        alshival.configure(username="", api_key="secret-key")
         headers = alshival.mcp_tool()["headers"]
         self.assertEqual(headers["x-api-key"], "secret-key")
-        self.assertEqual(headers["x-user-email"], "sam@example.com")
         self.assertNotIn("x-user-username", headers)
+        self.assertNotIn("x-user-email", headers)
 
 
 if __name__ == "__main__":

@@ -12,14 +12,13 @@ ALERT_LEVEL = 45
 @dataclass
 class ClientConfig:
     username: Optional[str] = None
-    email: Optional[str] = None
-    # Optional owner username for shared-resource logging paths.
-    # When set, logs post to /u/<resource_owner_username>/... while auth stays tied to username/email.
+    # Derived from `resource` URL.
     resource_owner_username: Optional[str] = None
     api_key: Optional[str] = None
     base_url: str = "https://alshival.ai"
     # Optional explicit DevTools portal prefix (for example "/DevTools" or "").
     portal_prefix: Optional[str] = None
+    # Derived from `resource` URL.
     resource_id: Optional[str] = None
     enabled: bool = True
     # Minimum stdlib logging level to forward to Alshival Cloud Logs.
@@ -127,74 +126,75 @@ _base_url_env = (
     or "https://alshival.ai"
 )
 _portal_prefix_env = _normalize_portal_prefix(os.getenv("ALSHIVAL_PORTAL_PREFIX"))
+_debug_env = _env_bool("ALSHIVAL_DEBUG", False)
+_default_cloud_level = logging.DEBUG if _debug_env else logging.INFO
 
 _config = ClientConfig(
     username=os.getenv("ALSHIVAL_USERNAME"),
-    email=os.getenv("ALSHIVAL_EMAIL"),
-    resource_owner_username=(
-        os.getenv("ALSHIVAL_RESOURCE_OWNER_USERNAME")
-        or (_resource_env.resource_owner_username if _resource_env else None)
-    ),
+    resource_owner_username=(_resource_env.resource_owner_username if _resource_env else None),
     api_key=os.getenv("ALSHIVAL_API_KEY"),
     base_url=str(_base_url_env).rstrip("/"),
     portal_prefix=_portal_prefix_env if _portal_prefix_env is not None else (_resource_env.portal_prefix if _resource_env else None),
-    resource_id=os.getenv("ALSHIVAL_RESOURCE_ID") or (_resource_env.resource_id if _resource_env else None),
-    cloud_level=_env_level("ALSHIVAL_CLOUD_LEVEL", logging.INFO),
-    debug=_env_bool("ALSHIVAL_DEBUG", False),
+    resource_id=(_resource_env.resource_id if _resource_env else None),
+    cloud_level=_env_level("ALSHIVAL_CLOUD_LEVEL", _default_cloud_level),
+    debug=_debug_env,
 )
 
 
 def configure(
     *,
     username: Optional[str] = None,
-    email: Optional[str] = None,
     resource: Optional[str] = None,
-    resource_owner_username: Optional[str] = None,
     api_key: Optional[str] = None,
     base_url: Optional[str] = None,
     portal_prefix: Optional[str] = None,
-    resource_id: Optional[str] = None,
     enabled: Optional[bool] = None,
     cloud_level: Optional[Union[int, str]] = None,
     timeout_seconds: Optional[int] = None,
     verify_ssl: Optional[bool] = None,
     debug: Optional[bool] = None,
 ) -> None:
-    parsed_resource = _parse_resource_reference(resource) if resource is not None else None
-    if parsed_resource is not None:
-        if base_url is None:
-            base_url = parsed_resource.base_url
-        if portal_prefix is None:
-            portal_prefix = parsed_resource.portal_prefix
-        if resource_owner_username is None:
-            resource_owner_username = parsed_resource.resource_owner_username
-        if resource_id is None:
-            resource_id = parsed_resource.resource_id
+    if resource is not None:
+        parsed_resource = _parse_resource_reference(resource)
+        if parsed_resource is not None:
+            if base_url is None:
+                base_url = parsed_resource.base_url
+            if portal_prefix is None:
+                portal_prefix = parsed_resource.portal_prefix
+            _config.resource_owner_username = parsed_resource.resource_owner_username
+            _config.resource_id = parsed_resource.resource_id
+        else:
+            _config.resource_owner_username = None
+            _config.resource_id = None
 
     if username is not None:
         _config.username = username
-    if email is not None:
-        _config.email = email
-    if resource_owner_username is not None:
-        _config.resource_owner_username = resource_owner_username
     if api_key is not None:
         _config.api_key = api_key
     if base_url is not None:
         _config.base_url = base_url.rstrip("/")
     if portal_prefix is not None:
         _config.portal_prefix = _normalize_portal_prefix(portal_prefix)
-    if resource_id is not None:
-        _config.resource_id = resource_id
     if enabled is not None:
         _config.enabled = enabled
     if cloud_level is not None:
         _config.cloud_level = _coerce_level(cloud_level)
+    elif debug is True:
+        # In SDK debug mode, prefer forwarding debug-level events unless caller explicitly sets cloud_level.
+        _config.cloud_level = logging.DEBUG
     if timeout_seconds is not None:
         _config.timeout_seconds = timeout_seconds
     if verify_ssl is not None:
         _config.verify_ssl = verify_ssl
     if debug is not None:
         _config.debug = debug
+    try:
+        from .logger import refresh_debug_console_handler  # noqa: PLC0415
+
+        refresh_debug_console_handler()
+    except Exception:
+        # Fail-safe: configuration should never raise due to optional helpers.
+        pass
     try:
         # Keep exported MCP tool specs in sync with latest credentials/config.
         from .mcp_tools import refresh_mcp  # noqa: PLC0415
