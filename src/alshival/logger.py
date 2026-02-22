@@ -108,6 +108,8 @@ class CloudLogHandler(logging.Handler):
         cfg = get_config()
         if not cfg.enabled:
             return False
+        if cfg.cloud_level is None:
+            return False
         min_level = self.cloud_level if self.cloud_level is not None else cfg.cloud_level
         if record.levelno < min_level:
             return False

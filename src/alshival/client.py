@@ -22,7 +22,8 @@ class ClientConfig:
     resource_id: Optional[str] = None
     enabled: bool = True
     # Minimum stdlib logging level to forward to Alshival Cloud Logs.
-    cloud_level: int = logging.INFO
+    # Set to None to disable cloud forwarding.
+    cloud_level: Optional[int] = logging.INFO
     timeout_seconds: int = 5
     verify_ssl: bool = True
     # When True, emit SDK transport/config diagnostics to stderr (never raises).
@@ -54,12 +55,19 @@ def _normalize_portal_prefix(value: Optional[str]) -> Optional[str]:
     return "" if cleaned == "/" else cleaned
 
 
-def _coerce_level(level: Union[int, str]) -> int:
+def _coerce_level(level: Union[int, str, bool]) -> Optional[int]:
+    if isinstance(level, bool):
+        if level is False:
+            return None
+        raise ValueError("Invalid log level: True")
     if isinstance(level, int):
         return level
     name = level.strip().upper()
+    if name in {"NONE", "NULL", "FALSE", "OFF", "DISABLE", "DISABLED"}:
+        return None
     mapping = {
         "ALERT": ALERT_LEVEL,
+        "ALERTS": ALERT_LEVEL,
         "CRITICAL": logging.CRITICAL,
         "FATAL": logging.CRITICAL,
         "ERROR": logging.ERROR,
@@ -74,7 +82,7 @@ def _coerce_level(level: Union[int, str]) -> int:
     raise ValueError(f"Invalid log level: {level!r}")
 
 
-def _env_level(name: str, default: int) -> int:
+def _env_level(name: str, default: Optional[int]) -> Optional[int]:
     value = os.getenv(name)
     if value is None or value.strip() == "":
         return default
@@ -156,7 +164,7 @@ def configure(
     base_url: Optional[str] = None,
     portal_prefix: Optional[str] = None,
     enabled: Optional[bool] = None,
-    cloud_level: Optional[Union[int, str]] = None,
+    cloud_level: Optional[Union[int, str, bool]] = None,
     timeout_seconds: Optional[int] = None,
     verify_ssl: Optional[bool] = None,
     debug: Optional[bool] = None,
@@ -186,7 +194,7 @@ def configure(
         _config.enabled = enabled
     if cloud_level is not None:
         _config.cloud_level = _coerce_level(cloud_level)
-    elif debug is True:
+    elif debug is True and _config.cloud_level is not None:
         # In SDK debug mode, prefer forwarding debug-level events unless caller explicitly sets cloud_level.
         _config.cloud_level = logging.DEBUG
     if timeout_seconds is not None:

@@ -35,7 +35,7 @@ The SDK reads these environment variables automatically:
 - `ALSHIVAL_API_KEY`
 - `ALSHIVAL_BASE_URL` (optional, defaults to `https://alshival.dev` when `ALSHIVAL_RESOURCE` is not set)
 - `ALSHIVAL_PORTAL_PREFIX` (optional; override DevTools path prefix, for example `""` or `/DevTools`)
-- `ALSHIVAL_CLOUD_LEVEL` (optional, defaults to `INFO`; minimum level forwarded to Alshival Cloud Logs, supports `ALERT`)
+- `ALSHIVAL_CLOUD_LEVEL` (optional, defaults to `INFO`; minimum level forwarded to Alshival Cloud Logs, supports `ALERT`/`ALERTS`, set to `false` or `none` to disable cloud forwarding)
 - `ALSHIVAL_DEBUG` (optional, `true/false`; enables SDK debug console output and defaults cloud forwarding to `DEBUG` unless `ALSHIVAL_CLOUD_LEVEL` is set)
 
 With those set, you can start logging immediately:
@@ -49,6 +49,8 @@ alshival.log.info("service started")
 ### Cloud Level vs Local Logging
 
 `ALSHIVAL_CLOUD_LEVEL` (or `configure(cloud_level=...)`) controls what gets forwarded to Alshival Cloud Logs.
+Accepted thresholds: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`, `ALERT`, `ALERTS`.
+Disable cloud forwarding with `false`/`none` (also accepts `off`/`disabled`, case-insensitive).
 
 It does not prevent your logs from being emitted locally via Python's `logging` system. If you want local output,
 configure `logging` normally (for example with `logging.basicConfig(...)`).
@@ -72,6 +74,16 @@ alshival.configure(
 
 alshival.log.info("prints locally; not sent to cloud")
 alshival.log.error("prints locally; sent to cloud")
+```
+
+Disable cloud forwarding explicitly:
+
+```env
+ALSHIVAL_CLOUD_LEVEL=false
+```
+
+```python
+alshival.configure(cloud_level=False)  # equivalent: cloud_level="none"
 ```
 
 ## Direct SDK Logging
@@ -110,7 +122,8 @@ alshival.log.error("db connection failed")
 alshival.log.alert("pager-worthy incident", extra={"service": "payments"})
 ```
 
-To forward debug events to cloud logs, set `ALSHIVAL_CLOUD_LEVEL=DEBUG`. When `ALSHIVAL_DEBUG=true`,
+To forward debug events to cloud logs, set `ALSHIVAL_CLOUD_LEVEL=DEBUG`. To forward only alert events, set
+`ALSHIVAL_CLOUD_LEVEL=ALERTS` (or `ALERT`). When `ALSHIVAL_DEBUG=true`,
 SDK debug messages are printed to console and debug-level cloud forwarding is enabled by default when possible.
 
 Attach logs to a specific resource per call:

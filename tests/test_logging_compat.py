@@ -134,7 +134,7 @@ class TestLoggingCompat(unittest.TestCase):
             args, kwargs = post.call_args
             self.assertIn("/resources/override-r/logs/", args[0])
 
-    def test_alert_level_and_tag_supported(self) -> None:
+    def test_cloud_level_disable_token_skips_forwarding(self) -> None:
         import alshival  # noqa: PLC0415
 
         alshival.configure(
@@ -142,7 +142,31 @@ class TestLoggingCompat(unittest.TestCase):
             api_key="k",
             resource="https://alshival.dev/u/u/resources/r/",
             enabled=True,
-            cloud_level="ALERT",
+            cloud_level="false",
+        )
+        with mock.patch("requests.Session.post") as post:
+            alshival.log.error("cloud forwarding disabled")
+            post.assert_not_called()
+
+    def test_env_cloud_level_disable_tokens_parse_as_disabled(self) -> None:
+        from alshival.client import build_client_config_from_env  # noqa: PLC0415
+
+        with mock.patch.dict("os.environ", {"ALSHIVAL_CLOUD_LEVEL": "false"}, clear=True):
+            cfg_false = build_client_config_from_env()
+        with mock.patch.dict("os.environ", {"ALSHIVAL_CLOUD_LEVEL": "None"}, clear=True):
+            cfg_none = build_client_config_from_env()
+        self.assertIsNone(cfg_false.cloud_level)
+        self.assertIsNone(cfg_none.cloud_level)
+
+    def test_alert_levels_alias_and_tag_supported(self) -> None:
+        import alshival  # noqa: PLC0415
+
+        alshival.configure(
+            username="u",
+            api_key="k",
+            resource="https://alshival.dev/u/u/resources/r/",
+            enabled=True,
+            cloud_level="ALERTS",
         )
         with mock.patch("requests.Session.post") as post:
             alshival.log.error("below alert threshold")
