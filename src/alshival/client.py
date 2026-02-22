@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import os
 from dataclasses import dataclass
-from typing import Optional, Union
+from typing import Optional
 from urllib.parse import quote, unquote, urlsplit
 
 ALERT_LEVEL = 45
@@ -55,27 +55,18 @@ def _normalize_portal_prefix(value: Optional[str]) -> Optional[str]:
     return "" if cleaned == "/" else cleaned
 
 
-def _coerce_level(level: Union[int, str, bool]) -> Optional[int]:
-    if isinstance(level, bool):
-        if level is False:
-            return None
-        raise ValueError("Invalid log level: True")
-    if isinstance(level, int):
-        return level
+def _coerce_level(level: str) -> Optional[int]:
+    if not isinstance(level, str):
+        raise ValueError(f"Invalid log level: {level!r}")
     name = level.strip().upper()
-    if name in {"NONE", "NULL", "FALSE", "OFF", "DISABLE", "DISABLED"}:
+    if name == "NONE":
         return None
     mapping = {
         "ALERT": ALERT_LEVEL,
-        "ALERTS": ALERT_LEVEL,
-        "CRITICAL": logging.CRITICAL,
-        "FATAL": logging.CRITICAL,
         "ERROR": logging.ERROR,
         "WARNING": logging.WARNING,
-        "WARN": logging.WARNING,
         "INFO": logging.INFO,
         "DEBUG": logging.DEBUG,
-        "NOTSET": logging.NOTSET,
     }
     if name in mapping:
         return mapping[name]
@@ -164,7 +155,7 @@ def configure(
     base_url: Optional[str] = None,
     portal_prefix: Optional[str] = None,
     enabled: Optional[bool] = None,
-    cloud_level: Optional[Union[int, str, bool]] = None,
+    cloud_level: Optional[str] = None,
     timeout_seconds: Optional[int] = None,
     verify_ssl: Optional[bool] = None,
     debug: Optional[bool] = None,

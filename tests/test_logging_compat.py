@@ -39,7 +39,7 @@ class TestLoggingCompat(unittest.TestCase):
             api_key="k",
             resource="https://alshival.dev/u/u/resources/r/",
             enabled=True,
-            cloud_level=logging.ERROR,
+            cloud_level="ERROR",
         )
 
         # Attach a capture handler to verify the log record is still emitted normally.
@@ -76,7 +76,7 @@ class TestLoggingCompat(unittest.TestCase):
                 api_key="k",
                 resource="https://alshival.dev/u/u/resources/r/",
                 enabled=True,
-                cloud_level=logging.DEBUG,
+                cloud_level="DEBUG",
             )
             with mock.patch("requests.Session.post") as post:
                 alshival.log.debug("debug event")
@@ -126,7 +126,7 @@ class TestLoggingCompat(unittest.TestCase):
             api_key="k",
             resource="https://alshival.dev/u/u/resources/r/",
             enabled=True,
-            cloud_level=logging.INFO,
+            cloud_level="INFO",
         )
         with mock.patch("requests.Session.post") as post:
             alshival.log.error("boom", resource_id="override-r")
@@ -142,23 +142,27 @@ class TestLoggingCompat(unittest.TestCase):
             api_key="k",
             resource="https://alshival.dev/u/u/resources/r/",
             enabled=True,
-            cloud_level="false",
+            cloud_level="NONE",
         )
         with mock.patch("requests.Session.post") as post:
             alshival.log.error("cloud forwarding disabled")
             post.assert_not_called()
 
-    def test_env_cloud_level_disable_tokens_parse_as_disabled(self) -> None:
+    def test_env_cloud_level_none_token_parses_as_disabled(self) -> None:
+        from alshival.client import build_client_config_from_env  # noqa: PLC0415
+
+        with mock.patch.dict("os.environ", {"ALSHIVAL_CLOUD_LEVEL": "NONE"}, clear=True):
+            cfg_none = build_client_config_from_env()
+        self.assertIsNone(cfg_none.cloud_level)
+
+    def test_env_cloud_level_invalid_value_falls_back_to_default(self) -> None:
         from alshival.client import build_client_config_from_env  # noqa: PLC0415
 
         with mock.patch.dict("os.environ", {"ALSHIVAL_CLOUD_LEVEL": "false"}, clear=True):
-            cfg_false = build_client_config_from_env()
-        with mock.patch.dict("os.environ", {"ALSHIVAL_CLOUD_LEVEL": "None"}, clear=True):
-            cfg_none = build_client_config_from_env()
-        self.assertIsNone(cfg_false.cloud_level)
-        self.assertIsNone(cfg_none.cloud_level)
+            cfg_invalid = build_client_config_from_env()
+        self.assertEqual(cfg_invalid.cloud_level, logging.INFO)
 
-    def test_alert_levels_alias_and_tag_supported(self) -> None:
+    def test_alert_level_and_tag_supported(self) -> None:
         import alshival  # noqa: PLC0415
 
         alshival.configure(
@@ -166,7 +170,7 @@ class TestLoggingCompat(unittest.TestCase):
             api_key="k",
             resource="https://alshival.dev/u/u/resources/r/",
             enabled=True,
-            cloud_level="ALERTS",
+            cloud_level="ALERT",
         )
         with mock.patch("requests.Session.post") as post:
             alshival.log.error("below alert threshold")
@@ -180,6 +184,12 @@ class TestLoggingCompat(unittest.TestCase):
             self.assertTrue(logs)
             self.assertEqual(str(logs[0].get("level") or ""), "alert")
 
+    def test_configure_cloud_level_rejects_non_string_values(self) -> None:
+        import alshival  # noqa: PLC0415
+
+        with self.assertRaises(ValueError):
+            alshival.configure(cloud_level=logging.ERROR)  # type: ignore[arg-type]
+
     def test_shared_resource_uses_owner_path_with_actor_headers(self) -> None:
         import alshival  # noqa: PLC0415
 
@@ -188,7 +198,7 @@ class TestLoggingCompat(unittest.TestCase):
             api_key="k",
             resource="https://alshival.dev/u/owner-user/resources/r/",
             enabled=True,
-            cloud_level=logging.INFO,
+            cloud_level="INFO",
         )
         with mock.patch("requests.Session.post") as post:
             alshival.log.info("shared write")
@@ -208,7 +218,7 @@ class TestLoggingCompat(unittest.TestCase):
             api_key="k",
             resource="https://alshival.dev/u/owner-user/resources/r/",
             enabled=True,
-            cloud_level=logging.INFO,
+            cloud_level="INFO",
         )
         with mock.patch("requests.Session.post") as post:
             alshival.log.info("shared write without username")
