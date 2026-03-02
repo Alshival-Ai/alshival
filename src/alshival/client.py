@@ -12,8 +12,13 @@ ALERT_LEVEL = 45
 @dataclass
 class ClientConfig:
     username: Optional[str] = None
-    # Derived from `resource` URL.
+    # Derived from `resource` URL for compatibility with older integrations.
     resource_owner_username: Optional[str] = None
+    # Derived from `resource` URL.
+    resource_route_kind: Optional[str] = None
+    resource_route_value: Optional[str] = None
+    # Derived from `resource` URL. Example: "/team/devops/resources".
+    resource_logs_prefix: Optional[str] = None
     api_key: Optional[str] = None
     base_url: str = "https://alshival.dev"
     # Optional explicit DevTools portal prefix (for example "/DevTools" or "").
@@ -34,6 +39,9 @@ class ClientConfig:
 class ParsedResourceRef:
     base_url: str
     portal_prefix: str
+    resource_route_kind: str
+    resource_route_value: str
+    resource_logs_prefix: str
     resource_owner_username: str
     resource_id: str
 
@@ -96,16 +104,29 @@ def _parse_resource_reference(resource: Optional[str]) -> Optional[ParsedResourc
     segments = [segment for segment in parsed.path.split("/") if segment]
     if segments and segments[-1].strip().lower() == "logs":
         segments = segments[:-1]
-    owner = ""
+    route_kind = ""
+    route_value = ""
+    resource_logs_prefix = ""
     resource_id = ""
     prefix_segments: list[str] = []
-    for index in range(max(0, len(segments) - 3)):
-        if segments[index] == "u" and segments[index + 2] == "resources":
-            owner = unquote(segments[index + 1]).strip()
-            resource_id = unquote(segments[index + 3]).strip()
+    for index, segment in enumerate(segments):
+        if segment.strip().lower() == "resources" and (index + 1) < len(segments):
+            resource_id = unquote(segments[index + 1]).strip()
+            if not resource_id:
+                return None
+            resource_logs_prefix = "/" + "/".join(segments[: index + 1])
+            if resource_logs_prefix == "/":
+                resource_logs_prefix = ""
             prefix_segments = segments[:index]
+            if index >= 2:
+                possible_kind = segments[index - 2].strip().lower()
+                possible_value = unquote(segments[index - 1]).strip()
+                if possible_kind in {"u", "team"} and possible_value:
+                    route_kind = possible_kind
+                    route_value = possible_value
+                    prefix_segments = segments[: index - 2]
             break
-    if not owner or not resource_id:
+    if not resource_logs_prefix or not resource_id:
         return None
     portal_prefix = "/" + "/".join(prefix_segments) if prefix_segments else ""
     if portal_prefix == "/":
@@ -113,7 +134,10 @@ def _parse_resource_reference(resource: Optional[str]) -> Optional[ParsedResourc
     return ParsedResourceRef(
         base_url=f"{parsed.scheme}://{parsed.netloc}".rstrip("/"),
         portal_prefix=portal_prefix,
-        resource_owner_username=owner,
+        resource_route_kind=route_kind,
+        resource_route_value=route_value,
+        resource_logs_prefix=resource_logs_prefix,
+        resource_owner_username=route_value,
         resource_id=resource_id,
     )
 
@@ -134,6 +158,9 @@ def build_client_config_from_env() -> ClientConfig:
 
     return ClientConfig(
         username=os.getenv("ALSHIVAL_USERNAME"),
+        resource_route_kind=(resource_env.resource_route_kind if resource_env else None),
+        resource_route_value=(resource_env.resource_route_value if resource_env else None),
+        resource_logs_prefix=(resource_env.resource_logs_prefix if resource_env else None),
         resource_owner_username=(resource_env.resource_owner_username if resource_env else None),
         api_key=os.getenv("ALSHIVAL_API_KEY"),
         base_url=str(base_url).rstrip("/"),
@@ -167,9 +194,15 @@ def configure(
                 base_url = parsed_resource.base_url
             if portal_prefix is None:
                 portal_prefix = parsed_resource.portal_prefix
+            _config.resource_route_kind = parsed_resource.resource_route_kind
+            _config.resource_route_value = parsed_resource.resource_route_value
+            _config.resource_logs_prefix = parsed_resource.resource_logs_prefix
             _config.resource_owner_username = parsed_resource.resource_owner_username
             _config.resource_id = parsed_resource.resource_id
         else:
+            _config.resource_route_kind = None
+            _config.resource_route_value = None
+            _config.resource_logs_prefix = None
             _config.resource_owner_username = None
             _config.resource_id = None
 
@@ -228,7 +261,7 @@ def _resolved_portal_prefix() -> str:
     return ""
 
 
-def build_resource_logs_endpoint(username: str, resource_id: str) -> str:
+def build_resource_logs_endpoint(username: str, resource_id: str, *, route_kind: str = "u") -> str:
     cfg = get_config()
     parsed = urlsplit(cfg.base_url)
     scheme = parsed.scheme or "https"
@@ -237,9 +270,16 @@ def build_resource_logs_endpoint(username: str, resource_id: str) -> str:
         netloc = "alshival.dev"
     base = f"{scheme}://{netloc}"
     portal_prefix = _resolved_portal_prefix()
+    resolved_route_kind = str(route_kind or "").strip().lower()
+    if resolved_route_kind not in {"u", "team"}:
+        resolved_route_kind = "u"
     safe_user = quote(str(username or "").strip(), safe="")
     safe_resource = quote(str(resource_id or "").strip(), safe="")
-    return f"{base}{portal_prefix}/u/{safe_user}/resources/{safe_resource}/logs/"
+    resource_logs_prefix = str(cfg.resource_logs_prefix or "").strip()
+    if resource_logs_prefix:
+        cleaned_prefix = "/" + resource_logs_prefix.strip("/")
+        return f"{base}{cleaned_prefix}/{safe_resource}/logs/"
+    return f"{base}{portal_prefix}/{resolved_route_kind}/{safe_user}/resources/{safe_resource}/logs/"
 
 
 def set_enabled(enabled: bool) -> None:

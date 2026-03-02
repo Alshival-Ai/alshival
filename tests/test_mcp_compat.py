@@ -15,6 +15,9 @@ class TestMCPCompat(unittest.TestCase):
 
         cfg = get_config()
         cfg.username = None
+        cfg.resource_route_kind = None
+        cfg.resource_route_value = None
+        cfg.resource_logs_prefix = None
         cfg.resource_owner_username = None
         cfg.api_key = None
         cfg.base_url = "https://alshival.ai"
@@ -60,6 +63,17 @@ class TestMCPCompat(unittest.TestCase):
             "https://alshival.ai/u/sam/resources/abc-123/logs/",
         )
 
+    def test_resource_endpoint_supports_team_route(self) -> None:
+        import alshival  # noqa: PLC0415
+        from alshival.client import build_resource_logs_endpoint  # noqa: PLC0415
+
+        alshival.configure(base_url="https://alshival.dev", portal_prefix=None)
+        endpoint = build_resource_logs_endpoint("devops", "abc-123", route_kind="team")
+        self.assertEqual(
+            endpoint,
+            "https://alshival.dev/team/devops/resources/abc-123/logs/",
+        )
+
     def test_configure_resource_url_parses_owner_uuid_and_prefix(self) -> None:
         import alshival  # noqa: PLC0415
         from alshival.client import get_config  # noqa: PLC0415
@@ -70,6 +84,9 @@ class TestMCPCompat(unittest.TestCase):
         cfg = get_config()
         self.assertEqual(cfg.base_url, "https://alshival.ai")
         self.assertEqual(cfg.portal_prefix, "/DevTools")
+        self.assertEqual(cfg.resource_route_kind, "u")
+        self.assertEqual(cfg.resource_route_value, "alshival")
+        self.assertEqual(cfg.resource_logs_prefix, "/DevTools/u/alshival/resources")
         self.assertEqual(cfg.resource_owner_username, "alshival")
         self.assertEqual(cfg.resource_id, "3e2ad894-5e5f-4c34-9899-1f9c2158009c")
 
@@ -83,8 +100,40 @@ class TestMCPCompat(unittest.TestCase):
         cfg = get_config()
         self.assertEqual(cfg.base_url, "https://alshival.dev")
         self.assertEqual(cfg.portal_prefix, "")
+        self.assertEqual(cfg.resource_route_kind, "u")
+        self.assertEqual(cfg.resource_route_value, "alshival")
+        self.assertEqual(cfg.resource_logs_prefix, "/u/alshival/resources")
         self.assertEqual(cfg.resource_owner_username, "alshival")
         self.assertEqual(cfg.resource_id, "3e2ad894-5e5f-4c34-9899-1f9c2158009c")
+
+    def test_configure_resource_url_parses_team_route(self) -> None:
+        import alshival  # noqa: PLC0415
+        from alshival.client import get_config  # noqa: PLC0415
+
+        alshival.configure(
+            resource="https://selfhost.example/team/devops/resources/3e2ad894-5e5f-4c34-9899-1f9c2158009c/"
+        )
+        cfg = get_config()
+        self.assertEqual(cfg.base_url, "https://selfhost.example")
+        self.assertEqual(cfg.portal_prefix, "")
+        self.assertEqual(cfg.resource_route_kind, "team")
+        self.assertEqual(cfg.resource_route_value, "devops")
+        self.assertEqual(cfg.resource_logs_prefix, "/team/devops/resources")
+        self.assertEqual(cfg.resource_owner_username, "devops")
+        self.assertEqual(cfg.resource_id, "3e2ad894-5e5f-4c34-9899-1f9c2158009c")
+
+    def test_resource_endpoint_prefers_parsed_resource_prefix(self) -> None:
+        import alshival  # noqa: PLC0415
+        from alshival.client import build_resource_logs_endpoint  # noqa: PLC0415
+
+        alshival.configure(
+            resource="https://dev.alshival.dev/team/Starwood/resources/517616d5-4513-4d19-a59e-0e5d052f46b5/"
+        )
+        endpoint = build_resource_logs_endpoint("ignored-user", "override-r")
+        self.assertEqual(
+            endpoint,
+            "https://dev.alshival.dev/team/Starwood/resources/override-r/logs/",
+        )
 
     def test_env_resource_url_wins_over_conflicting_base_url(self) -> None:
         from alshival.client import build_client_config_from_env  # noqa: PLC0415
@@ -101,6 +150,9 @@ class TestMCPCompat(unittest.TestCase):
 
         self.assertEqual(cfg.base_url, "https://alshival.dev")
         self.assertEqual(cfg.portal_prefix, "")
+        self.assertEqual(cfg.resource_route_kind, "u")
+        self.assertEqual(cfg.resource_route_value, "owner-user")
+        self.assertEqual(cfg.resource_logs_prefix, "/u/owner-user/resources")
         self.assertEqual(cfg.resource_owner_username, "owner-user")
         self.assertEqual(cfg.resource_id, "r-123")
 

@@ -17,6 +17,9 @@ class TestLoggingCompat(unittest.TestCase):
 
         cfg = get_config()
         cfg.username = None
+        cfg.resource_route_kind = None
+        cfg.resource_route_value = None
+        cfg.resource_logs_prefix = None
         cfg.resource_owner_username = None
         cfg.api_key = None
         cfg.base_url = "https://alshival.ai"
@@ -205,6 +208,26 @@ class TestLoggingCompat(unittest.TestCase):
             self.assertTrue(post.called)
             args, kwargs = post.call_args
             self.assertIn("/u/owner-user/resources/r/logs/", args[0])
+            headers = kwargs.get("headers") or {}
+            self.assertEqual(headers.get("x-api-key"), "k")
+            self.assertEqual(headers.get("x-user-username"), "viewer-user")
+            self.assertNotIn("x-user-email", headers)
+
+    def test_team_resource_uses_team_path_with_actor_headers(self) -> None:
+        import alshival  # noqa: PLC0415
+
+        alshival.configure(
+            username="viewer-user",
+            api_key="k",
+            resource="https://alshival.dev/team/devops/resources/r/",
+            enabled=True,
+            cloud_level="INFO",
+        )
+        with mock.patch("requests.Session.post") as post:
+            alshival.log.info("team write")
+            self.assertTrue(post.called)
+            args, kwargs = post.call_args
+            self.assertIn("/team/devops/resources/r/logs/", args[0])
             headers = kwargs.get("headers") or {}
             self.assertEqual(headers.get("x-api-key"), "k")
             self.assertEqual(headers.get("x-user-username"), "viewer-user")

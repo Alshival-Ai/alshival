@@ -1,6 +1,6 @@
 # Alshival SDK (Python)
 
-Python logging SDK for sending structured logs to Alshival DevTools resources.
+Python logging SDK for sending structured logs to Alshival resources (cloud and self-hosted).
 
 ## Install
 
@@ -31,10 +31,10 @@ To authenticate, create an API key in your Alshival account.
 The SDK reads these environment variables automatically:
 
 - `ALSHIVAL_USERNAME`
-- `ALSHIVAL_RESOURCE` (required for cloud logs; full resource URL, auto-derives owner username, resource UUID, base URL, and path prefix)
+- `ALSHIVAL_RESOURCE` (required for cloud logs; full resource URL, auto-derives route (`/u` or `/team`), route value, resource UUID, base URL, and path prefix)
 - `ALSHIVAL_API_KEY`
 - `ALSHIVAL_BASE_URL` (optional, defaults to `https://alshival.dev` when `ALSHIVAL_RESOURCE` is not set)
-- `ALSHIVAL_PORTAL_PREFIX` (optional; override DevTools path prefix, for example `""` or `/DevTools`)
+- `ALSHIVAL_PORTAL_PREFIX` (optional; override path prefix, for example `""` or `/DevTools`)
 - `ALSHIVAL_CLOUD_LEVEL` (optional, defaults to `INFO`; minimum level forwarded to Alshival Cloud Logs: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `ALERT`, `NONE`)
 - `ALSHIVAL_DEBUG` (optional, `true/false`; enables SDK debug console output and defaults cloud forwarding to `DEBUG` unless `ALSHIVAL_CLOUD_LEVEL` is set)
 
@@ -89,6 +89,7 @@ The logger sends events to your resource endpoint:
 
 - Main site (legacy path): `https://alshival.ai/DevTools/u/<username>/resources/<resource_uuid>/logs/`
 - DevTools domain: `https://alshival.dev/u/<username>/resources/<resource_uuid>/logs/`
+- Team route: `https://<your-host>/team/<team_name>/resources/<resource_uuid>/logs/`
 
 For shared resources:
 - Keep API key identity as your own `ALSHIVAL_USERNAME`.
@@ -99,6 +100,12 @@ You can also provide a full resource URL instead of separate owner/UUID settings
 
 ```env
 ALSHIVAL_RESOURCE=https://alshival.dev/u/alshival/resources/3e2ad894-5e5f-4c34-9899-1f9c2158009c/
+```
+
+Or a team-scoped resource URL:
+
+```env
+ALSHIVAL_RESOURCE=https://selfhost.example/team/devops/resources/3e2ad894-5e5f-4c34-9899-1f9c2158009c/
 ```
 
 Equivalent runtime override:

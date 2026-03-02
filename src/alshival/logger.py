@@ -93,8 +93,8 @@ class CloudLogHandler(logging.Handler):
         self.cloud_level = cloud_level
         self._local = threading.local()
 
-    def _resource_endpoint(self, username: str, resource_id: str) -> str:
-        return build_resource_logs_endpoint(username, resource_id)
+    def _resource_endpoint(self, username: str, resource_id: str, route_kind: str = "u") -> str:
+        return build_resource_logs_endpoint(username, resource_id, route_kind=route_kind)
 
     def _session(self) -> requests.Session:
         # requests.Session is not documented as thread-safe; keep one per thread.
@@ -184,8 +184,9 @@ class CloudLogHandler(logging.Handler):
                 ],
             }
 
-            resource_owner = str(cfg.resource_owner_username or cfg.username or "").strip()
-            endpoint = self._resource_endpoint(resource_owner, resolved_resource)
+            resource_route_kind = str(cfg.resource_route_kind or "").strip().lower() or "u"
+            resource_owner = str(cfg.resource_route_value or cfg.resource_owner_username or cfg.username or "").strip()
+            endpoint = self._resource_endpoint(resource_owner, resolved_resource, route_kind=resource_route_kind)
             headers = {"x-api-key": cfg.api_key or ""}
             if cfg.username:
                 headers["x-user-username"] = cfg.username
