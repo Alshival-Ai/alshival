@@ -4,6 +4,9 @@
 
 Python logging SDK for sending structured logs to Alshival resources (cloud and self-hosted).
 
+**Company:** Alshival.Ai  
+**Website:** https://Alshival.Ai
+
 ## Install
 
 ```bash
