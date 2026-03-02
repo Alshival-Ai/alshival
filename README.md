@@ -1,6 +1,6 @@
 # Alshival SDK (Python)
 
-<a href="https://alshival.ai"><img src="https://alshival.ai/static/img/logos/brain1_transparent.png" alt="Alshival" width="50%" /></a>
+<p align="center"><a href="https://alshival.ai"><img src="https://alshival.ai/static/img/logos/brain1_transparent.png" alt="Alshival" width="50%" /></a></p>
 
 Python logging SDK for sending structured logs to Alshival resources (cloud and self-hosted).
 
