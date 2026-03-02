@@ -1,5 +1,4 @@
 import logging
-import io
 import sys
 import unittest
 from unittest import mock
@@ -11,24 +10,16 @@ class TestLoggingCompat(unittest.TestCase):
         # Ensure we import the SDK package, not similarly named local modules.
         self._sdk_src = str(Path(__file__).resolve().parents[1] / "src")
         sys.path.insert(0, self._sdk_src)
-        import alshival  # noqa: PLC0415
         from alshival.client import get_config  # noqa: PLC0415
-        from alshival.logger import refresh_debug_console_handler  # noqa: PLC0415
 
         cfg = get_config()
         cfg.username = None
-        cfg.resource_route_kind = None
-        cfg.resource_route_value = None
+        cfg.resource_base_url = None
         cfg.resource_logs_prefix = None
-        cfg.resource_owner_username = None
         cfg.api_key = None
-        cfg.base_url = "https://alshival.ai"
-        cfg.portal_prefix = None
         cfg.resource_id = None
         cfg.enabled = True
         cfg.cloud_level = logging.INFO
-        cfg.debug = False
-        refresh_debug_console_handler()
 
     def tearDown(self) -> None:
         if sys.path and sys.path[0] == self._sdk_src:
@@ -86,31 +77,6 @@ class TestLoggingCompat(unittest.TestCase):
                 self.assertTrue(post.called)
         finally:
             root_logger.setLevel(original_root_level)
-
-    def test_sdk_debug_mode_prints_to_console_and_forwards_when_possible(self) -> None:
-        import alshival  # noqa: PLC0415
-
-        root_logger = logging.getLogger()
-        original_root_level = root_logger.level
-        root_logger.setLevel(logging.WARNING)
-        buf = io.StringIO()
-        with mock.patch("sys.stderr", new=buf):
-            try:
-                alshival.configure(
-                    username="u",
-                    api_key="k",
-                    resource="https://alshival.dev/u/u/resources/r/",
-                    enabled=True,
-                    debug=True,
-                )
-                # Keep output focused on SDK logger handlers in this test.
-                alshival.log._logger.propagate = False  # type: ignore[attr-defined]
-                with mock.patch("requests.Session.post") as post:
-                    alshival.log.debug("sdk debug trace")
-                    self.assertTrue(post.called)
-                self.assertIn("sdk debug trace", buf.getvalue())
-            finally:
-                root_logger.setLevel(original_root_level)
 
     def test_attach_is_deduped(self) -> None:
         import alshival  # noqa: PLC0415
@@ -233,7 +199,7 @@ class TestLoggingCompat(unittest.TestCase):
             self.assertEqual(headers.get("x-user-username"), "viewer-user")
             self.assertNotIn("x-user-email", headers)
 
-    def test_cloud_send_requires_username_identity(self) -> None:
+    def test_cloud_send_without_username_uses_resource_url(self) -> None:
         import alshival  # noqa: PLC0415
 
         alshival.configure(
@@ -245,7 +211,12 @@ class TestLoggingCompat(unittest.TestCase):
         )
         with mock.patch("requests.Session.post") as post:
             alshival.log.info("shared write without username")
-            post.assert_not_called()
+            self.assertTrue(post.called)
+            args, kwargs = post.call_args
+            self.assertIn("/u/owner-user/resources/r/logs/", args[0])
+            headers = kwargs.get("headers") or {}
+            self.assertEqual(headers.get("x-api-key"), "k")
+            self.assertNotIn("x-user-username", headers)
 
 
 if __name__ == "__main__":

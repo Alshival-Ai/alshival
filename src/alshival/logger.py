@@ -35,7 +35,6 @@ _RESERVED_RECORD_FIELDS = {
     "message",
     "asctime",
 }
-_DEBUG_CONSOLE_HANDLER_ATTR = "_alshival_debug_console_handler"
 
 if logging.getLevelName(ALERT_LEVEL) == f"Level {ALERT_LEVEL}":
     logging.addLevelName(ALERT_LEVEL, "ALERT")
@@ -64,15 +63,7 @@ def _sdk_version() -> str:
 
 
 def _debug(msg: str) -> None:
-    cfg = get_config()
-    if not cfg.debug:
-        return
-    try:
-        import sys
-
-        sys.stderr.write(f"[alshival] {msg}\n")
-    except Exception:
-        return
+    return
 
 
 class CloudLogHandler(logging.Handler):
@@ -93,8 +84,8 @@ class CloudLogHandler(logging.Handler):
         self.cloud_level = cloud_level
         self._local = threading.local()
 
-    def _resource_endpoint(self, username: str, resource_id: str, route_kind: str = "u") -> str:
-        return build_resource_logs_endpoint(username, resource_id, route_kind=route_kind)
+    def _resource_endpoint(self, resource_id: str) -> str:
+        return build_resource_logs_endpoint(resource_id)
 
     def _session(self) -> requests.Session:
         # requests.Session is not documented as thread-safe; keep one per thread.
@@ -114,9 +105,6 @@ class CloudLogHandler(logging.Handler):
         if record.levelno < min_level:
             return False
         if not cfg.api_key:
-            return False
-        # Personal API keys require username actor context.
-        if not cfg.username:
             return False
         return True
 
@@ -184,9 +172,10 @@ class CloudLogHandler(logging.Handler):
                 ],
             }
 
-            resource_route_kind = str(cfg.resource_route_kind or "").strip().lower() or "u"
-            resource_owner = str(cfg.resource_route_value or cfg.resource_owner_username or cfg.username or "").strip()
-            endpoint = self._resource_endpoint(resource_owner, resolved_resource, route_kind=resource_route_kind)
+            endpoint = self._resource_endpoint(resolved_resource)
+            if not endpoint:
+                _debug("skipping cloud log: missing route target (set ALSHIVAL_RESOURCE)")
+                return
             headers = {"x-api-key": cfg.api_key or ""}
             if cfg.username:
                 headers["x-user-username"] = cfg.username
@@ -198,7 +187,7 @@ class CloudLogHandler(logging.Handler):
                     timeout=cfg.timeout_seconds,
                     verify=cfg.verify_ssl,
                 )
-                if cfg.debug and getattr(resp, "status_code", 0) >= 400:
+                if getattr(resp, "status_code", 0) >= 400:
                     _debug(f"cloud log post failed: status={resp.status_code}")
             except Exception as exc:
                 _debug(f"cloud log post failed: {exc!r}")
@@ -212,25 +201,6 @@ class CloudLogHandler(logging.Handler):
 
 # Backwards-compatible alias (older name).
 AlshivalLogHandler = CloudLogHandler
-
-
-def refresh_debug_console_handler() -> None:
-    cfg = get_config()
-    target = logging.getLogger("alshival")
-    existing = [
-        handler for handler in target.handlers if bool(getattr(handler, _DEBUG_CONSOLE_HANDLER_ATTR, False))
-    ]
-    if cfg.debug:
-        if existing:
-            return
-        handler = logging.StreamHandler()
-        handler.setLevel(logging.DEBUG)
-        handler.setFormatter(logging.Formatter("[alshival] %(levelname)s %(message)s"))
-        setattr(handler, _DEBUG_CONSOLE_HANDLER_ATTR, True)
-        target.addHandler(handler)
-        return
-    for handler in existing:
-        target.removeHandler(handler)
 
 
 def _dedupe_add_handler(target: logging.Logger, handler: CloudLogHandler) -> CloudLogHandler:
@@ -256,7 +226,6 @@ class AlshivalLogger:
         # Keep facade-level methods (`alshival.log.debug/info/...`) independent from root logger filtering.
         # Cloud forwarding still honors configured `cloud_level`.
         self._logger.setLevel(logging.DEBUG)
-        refresh_debug_console_handler()
         _dedupe_add_handler(self._logger, CloudLogHandler())
 
     def __getattr__(self, name: str) -> Any:
@@ -268,13 +237,13 @@ class AlshivalLogger:
         return {
             "username": cfg.username,
             "api_key": "set" if cfg.api_key else "unset",
-            "base_url": cfg.base_url,
+            "resource_base_url": cfg.resource_base_url,
+            "resource_logs_prefix": cfg.resource_logs_prefix,
             "resource_id": cfg.resource_id,
             "enabled": cfg.enabled,
             "cloud_level": cfg.cloud_level,
             "timeout_seconds": cfg.timeout_seconds,
             "verify_ssl": cfg.verify_ssl,
-            "debug": cfg.debug,
         }
 
     def _with_resource(self, kwargs: dict[str, Any], resource_id: Optional[str]) -> dict[str, Any]:

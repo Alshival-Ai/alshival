@@ -1,6 +1,5 @@
 from .client import ALERT_LEVEL, configure, set_enabled, get_config
 from .logger import log
-from .mcp_tools import mcp, mcp_tool, github_mcp_tool
 
 
 def get_logger(name: str, **kwargs):
@@ -21,9 +20,6 @@ __all__ = [
     "get_config",
     "ALERT_LEVEL",
     "log",
-    "mcp",
-    "mcp_tool",
-    "github_mcp_tool",
     "get_logger",
     "handler",
     "attach",
