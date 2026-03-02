@@ -1,6 +1,6 @@
 # Alshival SDK (Python)
 
-[![Alshival](https://alshival.ai/static/img/logos/brain1_transparent.png)](https://alshival.ai)
+<a href="https://alshival.ai"><img src="https://alshival.ai/static/img/logos/brain1_transparent.png" alt="Alshival" width="50%" /></a>
 
 Python logging SDK for sending structured logs to Alshival resources (cloud and self-hosted).
 
