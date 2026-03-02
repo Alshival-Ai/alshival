@@ -1,5 +1,7 @@
 # Alshival SDK (Python)
 
+[![Alshival](https://alshival.ai/static/img/logos/brain1_transparent.png)](https://alshival.ai)
+
 Python logging SDK for sending structured logs to Alshival resources (cloud and self-hosted).
 
 ## Install
